@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Supervision Dashboard - Sweden Relocators</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #0f3460;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+        }
+        
+        .header .status {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #00ff88;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            height: calc(100vh - 60px);
+        }
+        
+        /* Sidebar - Conversation List */
+        .sidebar {
+            background: #16213e;
+            border-right: 1px solid #0f3460;
+            overflow-y: auto;
+        }
+        
+        .sidebar-header {
+            padding: 1rem;
+            border-bottom: 1px solid #0f3460;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .sidebar-header h2 {
+            font-size: 1rem;
+            color: #888;
+        }
+        
+        .refresh-btn {
+            background: #0f3460;
+            border: none;
+            color: #00d9ff;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        
+        .refresh-btn:hover {
+            background: #1a4a7a;
+        }
+        
+        .conversation-list {
+            padding: 0.5rem;
+        }
+        
+        .conversation-item {
+            background: #1a1a2e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .conversation-item:hover {
+            border-color: #00d9ff;
+            transform: translateX(5px);
+        }
+        
+        .conversation-item.active {
+            border-color: #00d9ff;
+            background: #0f3460;
+        }
+        
+        .conversation-item.takeover {
+            border-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+        }
+        
+        .conversation-item.pending {
+            border-color: #ff4757;
+            background: rgba(255, 71, 87, 0.15);
+            animation: pulse-border 2s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: #ff4757; box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.4); }
+            50% { border-color: #ff6b6b; box-shadow: 0 0 0 4px rgba(255, 71, 87, 0); }
+            100% { border-color: #ff4757; box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+        }
+        
+        .conv-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .conv-user {
+            font-weight: bold;
+            color: #00d9ff;
+        }
+        
+        .conv-status {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 10px;
+            text-transform: uppercase;
+        }
+        
+        .conv-status.active { background: #00ff88; color: #000; }
+        .conv-status.admin_takeover { background: #ff6b6b; color: #fff; }
+        .conv-status.pending_handoff { background: #ffd93d; color: #000; }
+        .conv-status.ended { background: #666; color: #fff; }
+        
+        .conv-preview {
+            font-size: 0.85rem;
+            color: #888;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .conv-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+            color: #666;
+        }
+        
+        /* Main Content - Chat View */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            background: #1a1a2e;
+        }
+        
+        .chat-header {
+            padding: 1rem;
+            background: #16213e;
+            border-bottom: 1px solid #0f3460;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .chat-info h3 {
+            color: #00d9ff;
+        }
+        
+        .chat-info p {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .chat-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        
+        .btn-takeover {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .btn-takeover:hover {
+            background: #ff5252;
+        }
+        
+        .btn-release {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .btn-release:hover {
+            background: #00cc6a;
+        }
+        
+        .btn-end {
+            background: #666;
+            color: white;
+        }
+        
+        .btn-end:hover {
+            background: #888;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* Chat Messages */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        
+        .message {
+            max-width: 80%;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border-radius: 10px;
+            animation: fadeIn 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.user {
+            background: #0f3460;
+            margin-left: auto;
+            border-bottom-right-radius: 0;
+        }
+        
+        .message.ai {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-bottom-left-radius: 0;
+        }
+        
+        .message.admin {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+            color: white;
+            border-bottom-left-radius: 0;
+        }
+        
+        .message-header {
+            font-size: 0.75rem;
+            color: #888;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .message.admin .message-header {
+            color: rgba(255,255,255,0.7);
+        }
+        
+        .message-content {
+            line-height: 1.5;
+        }
+        
+        /* Admin Input */
+        .admin-input {
+            padding: 1rem;
+            background: #16213e;
+            border-top: 1px solid #0f3460;
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .admin-input input {
+            flex: 1;
+            padding: 1rem;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 1rem;
+        }
+        
+        .admin-input input:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+        
+        .admin-input input:disabled {
+            opacity: 0.5;
+        }
+        
+        .admin-input button {
+            padding: 1rem 2rem;
+            background: #ff6b6b;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        
+        .admin-input button:hover {
+            background: #ff5252;
+        }
+        
+        .admin-input button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #666;
+        }
+        
+        .empty-state svg {
+            width: 100px;
+            height: 100px;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+        
+        /* Config Panel */
+        .config-panel {
+            background: #16213e;
+            padding: 1rem;
+            border-bottom: 1px solid #0f3460;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .config-panel label {
+            color: #888;
+            font-size: 0.85rem;
+        }
+        
+        .config-panel input {
+            padding: 0.5rem;
+            border: 1px solid #0f3460;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #eee;
+            width: 300px;
+        }
+        
+        .config-panel input:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+        
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            color: white;
+            animation: slideIn 0.3s;
+            z-index: 1000;
+        }
+        
+        .toast.success { background: #00ff88; color: #000; }
+        .toast.error { background: #ff6b6b; }
+        .toast.info { background: #00d9ff; color: #000; }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ Admin Supervision Dashboard</h1>
+        <div class="status">
+            <div class="status-dot"></div>
+            <span>Live Monitoring</span>
+            <span id="conv-count">0 active conversations</span>
+        </div>
+    </div>
+    
+    <div class="config-panel">
+        <label>Admin ID:</label>
+        <input type="text" id="admin-id" value="admin_default" placeholder="Your admin ID">
+        <label>Admin Key:</label>
+        <input type="password" id="admin-key" value="5Cch-yzNNLBzqc0rW6EBSQI2PSGPbWLHv4yhajHVQTs" placeholder="X-Admin-Key">
+        <button class="refresh-btn" onclick="loadConversations()">🔄 Refresh</button>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Active Conversations</h2>
+            </div>
+            <div class="conversation-list" id="conversation-list">
+                <!-- Conversations loaded dynamically -->
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="chat-header" id="chat-header" style="display: none;">
+                <div class="chat-info">
+                    <h3 id="chat-user">User</h3>
+                    <p id="chat-meta">Channel: webhook | Language: English</p>
+                </div>
+                <div class="chat-actions">
+                    <button class="btn btn-takeover" id="btn-takeover" onclick="takeoverConversation()">
+                        🎯 Take Over
+                    </button>
+                    <button class="btn btn-release" id="btn-release" onclick="releaseConversation(false)" style="display: none;">
+                        ↩️ Release to AI
+                    </button>
+                    <button class="btn btn-end" id="btn-end" onclick="releaseConversation(true)" style="display: none;">
+                        ✓ End Conversation
+                    </button>
+                </div>
+            </div>
+            
+            <div class="chat-messages" id="chat-messages">
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    <p>Select a conversation to view</p>
+                </div>
+            </div>
+            
+            <div class="admin-input" id="admin-input" style="display: none;">
+                <input type="text" id="message-input" placeholder="Type your message as admin..." disabled>
+                <button onclick="sendAdminMessage()" id="send-btn" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let currentSession = null;
+        let isAdminTakeover = false;
+        let refreshInterval = null;
+        
+        // Get config values
+        function getAdminId() {
+            return document.getElementById('admin-id').value || 'admin_default';
+        }
+        
+        function getAdminKey() {
+            return document.getElementById('admin-key').value;
+        }
+        
+        // Load all conversations
+        async function loadConversations() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/supervision/conversations`, {
+                    headers: {
+                        'X-Admin-Key': getAdminKey()
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to load conversations');
+                }
+                
+                const data = await response.json();
+                renderConversationList(data.conversations);
+                document.getElementById('conv-count').textContent = `${data.total} active conversations`;
+                
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+                showToast('Failed to load conversations', 'error');
+            }
+        }
+        
+        // Render conversation list
+        function renderConversationList(conversations) {
+            const list = document.getElementById('conversation-list');
+            
+            if (conversations.length === 0) {
+                list.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: #666;">
+                        <p>No active conversations</p>
+                        <p style="font-size: 0.8rem; margin-top: 0.5rem;">Conversations will appear here when users start chatting</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            list.innerHTML = conversations.map(conv => `
+                <div class="conversation-item ${conv.admin_takeover ? 'takeover' : ''} ${conv.status === 'pending_handoff' ? 'pending' : ''} ${currentSession === conv.session_id ? 'active' : ''}"
+                     onclick="selectConversation('${conv.session_id}')">
+                    <div class="conv-header">
+                        <span class="conv-user">👤 ${conv.user_id}</span>
+                        <span class="conv-status ${conv.status}">${formatStatus(conv.status)}</span>
+                    </div>
+                    <div class="conv-preview">${conv.last_message || 'No messages yet'}</div>
+                    <div class="conv-meta">
+                        <span>📱 ${conv.channel || 'webhook'}</span>
+                        <span>💬 ${conv.message_count} msgs</span>
+                        <span>${formatTime(conv.last_activity)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Format status for display
+        function formatStatus(status) {
+            const statusMap = {
+                'active': '🟢 Active',
+                'admin_takeover': '🔴 Admin',
+                'pending_handoff': '🟡 Pending',
+                'ended': '⚫ Ended'
+            };
+            return statusMap[status] || status;
+        }
+        
+        // Format timestamp
+        function formatTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString();
+        }
+        
+        // Select a conversation
+        async function selectConversation(sessionId) {
+            currentSession = sessionId;
+            
+            // Highlight selected
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+            
+            // Show chat area
+            document.getElementById('chat-header').style.display = 'flex';
+            document.getElementById('admin-input').style.display = 'flex';
+            
+            // Load conversation details
+            try {
+                const response = await fetch(`${API_BASE}/admin/supervision/conversations/${sessionId}`, {
+                    headers: {
+                        'X-Admin-Key': getAdminKey()
+                    }
+                });
+                
+                if (!response.ok) throw new Error('Failed to load conversation');
+                
+                const data = await response.json();
+                renderConversation(data.conversation);
+                
+            } catch (error) {
+                console.error('Error loading conversation:', error);
+                showToast('Failed to load conversation', 'error');
+            }
+        }
+        
+        // Render conversation messages
+        function renderConversation(conversation) {
+            // Update header
+            document.getElementById('chat-user').textContent = `👤 ${conversation.user_id || 'Unknown User'}`;
+            document.getElementById('chat-meta').textContent = 
+                `Channel: ${conversation.channel || 'webhook'} | Status: ${conversation.status}`;
+            
+            // Update buttons based on takeover status
+            isAdminTakeover = conversation.admin_takeover;
+            updateButtons();
+            
+            // Render messages
+            const container = document.getElementById('chat-messages');
+            
+            if (!conversation.messages || conversation.messages.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <p>No messages in this conversation yet</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = conversation.messages.map(msg => `
+                <div class="message ${msg.type}">
+                    <div class="message-header">
+                        <span>${getMessageLabel(msg)}</span>
+                        <span>${formatTime(msg.timestamp)}</span>
+                    </div>
+                    <div class="message-content">${escapeHtml(msg.content)}</div>
+                </div>
+            `).join('');
+            
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // Get message label
+        function getMessageLabel(msg) {
+            switch(msg.type) {
+                case 'user': return '👤 User';
+                case 'ai': return '🤖 AI';
+                case 'admin': return `🛡️ Admin (${msg.admin_id || 'Unknown'})`;
+                default: return msg.type;
+            }
+        }
+        
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Update button visibility
+        function updateButtons() {
+            const takeoverBtn = document.getElementById('btn-takeover');
+            const releaseBtn = document.getElementById('btn-release');
+            const endBtn = document.getElementById('btn-end');
+            const messageInput = document.getElementById('message-input');
+            const sendBtn = document.getElementById('send-btn');
+            
+            if (isAdminTakeover) {
+                takeoverBtn.style.display = 'none';
+                releaseBtn.style.display = 'inline-block';
+                endBtn.style.display = 'inline-block';
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                messageInput.placeholder = 'Type your message as admin...';
+            } else {
+                takeoverBtn.style.display = 'inline-block';
+                releaseBtn.style.display = 'none';
+                endBtn.style.display = 'none';
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+                messageInput.placeholder = 'Take over conversation to send messages...';
+            }
+        }
+        
+        // Take over conversation
+        async function takeoverConversation() {
+            if (!currentSession) return;
+            
+            const reason = prompt('Reason for taking over (optional):', 'Manual intervention - AI response incorrect');
+            if (reason === null) return; // Cancelled
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/supervision/conversations/${currentSession}/takeover`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        reason: reason || 'Manual intervention'
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to take over');
+                }
+                
+                showToast('You have taken over this conversation!', 'success');
+                isAdminTakeover = true;
+                updateButtons();
+                loadConversations();
+                
+            } catch (error) {
+                console.error('Error taking over:', error);
+                showToast(error.message, 'error');
+            }
+        }
+        
+        // Send admin message
+        async function sendAdminMessage() {
+            if (!currentSession || !isAdminTakeover) return;
+            
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/supervision/conversations/${currentSession}/message`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        message: message
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to send message');
+                }
+                
+                input.value = '';
+                
+                // Add message to UI immediately
+                const container = document.getElementById('chat-messages');
+                const msgHtml = `
+                    <div class="message admin">
+                        <div class="message-header">
+                            <span>🛡️ Admin (${getAdminId()})</span>
+                            <span>${new Date().toLocaleTimeString()}</span>
+                        </div>
+                        <div class="message-content">${escapeHtml(message)}</div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', msgHtml);
+                container.scrollTop = container.scrollHeight;
+                
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showToast(error.message, 'error');
+            }
+        }
+        
+        // Release conversation
+        async function releaseConversation(endConversation) {
+            if (!currentSession) return;
+            
+            const action = endConversation ? 'end' : 'release back to AI';
+            if (!confirm(`Are you sure you want to ${action} this conversation?`)) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/supervision/conversations/${currentSession}/release`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        end_conversation: endConversation
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to release');
+                }
+                
+                showToast(endConversation ? 'Conversation ended' : 'Released back to AI', 'success');
+                isAdminTakeover = false;
+                updateButtons();
+                loadConversations();
+                
+            } catch (error) {
+                console.error('Error releasing:', error);
+                showToast(error.message, 'error');
+            }
+        }
+        
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+        
+        // Handle Enter key for sending message
+        document.getElementById('message-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendAdminMessage();
+            }
+        });
+        
+        // Initial load
+        loadConversations();
+        
+        // Auto-refresh every 5 seconds
+        refreshInterval = setInterval(loadConversations, 5000);
+    </script>
+</body>
+</html>

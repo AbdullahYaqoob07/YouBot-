@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sweden Relocators AI Agent - Test Console</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            width: 100%;
+            height: 90vh;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-panel {
+            flex: 2;
+        }
+
+        .admin-panel {
+            flex: 1;
+        }
+
+        .header {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Admin Controls */
+        .admin-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #dc3545;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.online {
+            background: #28a745;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .toggle-btn.online {
+            background: #28a745;
+            color: white;
+        }
+
+        .toggle-btn.offline {
+            background: #dc3545;
+            color: white;
+        }
+
+        .toggle-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Admin Info */
+        .admin-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .admin-info h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .admin-info .value {
+            font-size: 18px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        /* Chat Area */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 15px;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 5px;
+        }
+
+        .message-meta {
+            font-size: 11px;
+            margin-top: 5px;
+            opacity: 0.7;
+        }
+
+        .handoff-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #ffc107;
+            color: #333;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
+        .handoff-badge.assigned {
+            background: #28a745;
+            color: white;
+        }
+
+        .handoff-badge.pending {
+            background: #dc3545;
+            color: white;
+        }
+
+        /* Input Area */
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        #messageInput:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .input-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"].small-input {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 13px;
+            flex: 1;
+        }
+
+        .send-btn {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Queue List */
+        .queue-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .queue-item {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+
+        .queue-item .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .queue-item .status.pending {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .queue-item .status.assigned {
+            background: #28a745;
+            color: white;
+        }
+
+        .queue-item .status.resolved {
+            background: #6c757d;
+            color: white;
+        }
+
+        /* Loading Spinner */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Chat Panel -->
+        <div class="panel chat-panel">
+            <div class="header">
+                <h1>🤖 AI Agent Test Console</h1>
+                <p>Sweden Relocators - LangGraph AI System</p>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message assistant">
+                    <div class="message-content">
+                        👋 Welcome! I'm the Sweden Relocators AI assistant. Ask me anything about visa, relocation, housing, or immigration procedures.
+                        <div class="message-meta">System Ready</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input">
+                <div class="input-group">
+                    <input type="text" id="messageInput" placeholder="Type your message..." />
+                    <div class="input-controls">
+                        <input type="text" id="userIdInput" class="small-input" placeholder="User ID (e.g., user_001)" value="test_user_001" />
+                        <input type="text" id="channelInput" class="small-input" placeholder="Channel" value="webhook" />
+                    </div>
+                </div>
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div class="panel admin-panel">
+            <div class="header">
+                <h1>👨‍💼 Admin Control</h1>
+                <p>Test admin handoff system</p>
+            </div>
+
+            <div class="admin-status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <button class="toggle-btn offline" id="toggleBtn" onclick="toggleAdminStatus()">
+                    Admin Offline
+                </button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="label">Total Queries</div>
+                    <div class="value" id="totalQueries">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Handoffs</div>
+                    <div class="value" id="totalHandoffs">0</div>
+                </div>
+            </div>
+
+            <div class="admin-info">
+                <h3>Current Admin</h3>
+                <div class="value" id="currentAdmin">None Online</div>
+            </div>
+
+            <div class="admin-info">
+                <h3>Last Response</h3>
+                <div class="value" id="lastResponse" style="font-size: 14px;">-</div>
+            </div>
+
+            <h3 style="margin: 20px 0 10px; color: #666; font-size: 14px;">Admin Queue</h3>
+            <div class="queue-list" id="queueList">
+                <p style="color: #999; font-size: 13px; text-align: center;">No items in queue</p>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* [Existing Styles] ... */
+        
+        /* Admin Takeover Mode Styles */
+        body.admin-mode {
+            background: linear-gradient(135deg, #1a2980 0%, #26d0ce 100%);
+        }
+        
+        .admin-mode .header {
+            border-bottom-color: #26d0ce;
+        }
+        
+        .admin-mode .header h1 {
+            color: #1a2980;
+        }
+        
+        .admin-mode .message.assistant {
+            border-left: 4px solid #26d0ce;
+        }
+        
+        .admin-mode .message.admin {
+            background-color: #e3f2fd;
+            border-left: 4px solid #1a2980;
+        }
+        
+        .live-indicator {
+            display: none;
+            background: #ff4757;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            animation: pulse-red 2s infinite;
+        }
+        
+        .admin-mode .live-indicator {
+            display: inline-block;
+        }
+        
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+        }
+    </style>
+    <!-- ... inside script ... -->
+    <script>
+        let adminOnline = false;
+        let totalQueries = 0;
+        let totalHandoffs = 0;
+        let currentSessionId = null;
+        let lastMessageTimestamp = 0;
+        let pollingInterval = null;
+        
+        const API_BASE = 'http://localhost:5678';
+        const API_KEY = 'eptU3MB3c7PHHBXt3OspFmvbS2u369e6x5gNa-6aqgE';
+        const ADMIN_KEY = '5Cch-yzNNLBzqc0rW6EBSQI2PSGPbWLHv4yhajHVQTs';
+
+        // Initialize
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Start polling for chat updates
+        function startPolling() {
+            if (pollingInterval) clearInterval(pollingInterval);
+            pollingInterval = setInterval(pollChatUpdates, 3000);
+        }
+
+        async function pollChatUpdates() {
+            if (!currentSessionId) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/chat/${currentSessionId}/history`, {
+                    headers: { 'X-API-Key': API_KEY }
+                });
+                
+                if (!response.ok) return;
+
+                const data = await response.json();
+                
+                // Update UI Mode based on status
+                const body = document.body;
+                const headerTitle = document.querySelector('.header h1');
+                
+                if (data.admin_takeover) {
+                    if (!body.classList.contains('admin-mode')) {
+                        body.classList.add('admin-mode');
+                        headerTitle.innerHTML = '👨‍💼 Live Support Agent <span class="live-indicator">LIVE</span>';
+                        showToast('An admin has joined the chat');
+                    }
+                } else {
+                    if (body.classList.contains('admin-mode')) {
+                        body.classList.remove('admin-mode');
+                        headerTitle.innerHTML = '🤖 AI Agent Test Console';
+                        showToast('Chat returned to AI');
+                    }
+                }
+
+                // Process new messages
+                if (data.messages && data.messages.length > 0) {
+                    const messagesDiv = document.getElementById('chatMessages');
+                    let newMessages = false;
+
+                    data.messages.forEach(msg => {
+                        const msgTime = new Date(msg.timestamp).getTime();
+                        if (msgTime > lastMessageTimestamp) {
+                            // Deduplicate: check if content already exists in last few messages
+                            // (webhook adds immediately, polling adds history)
+                            const existing = Array.from(messagesDiv.querySelectorAll('.message-content')).slice(-3);
+                            const isDuplicate = existing.some(el => el.textContent.includes(msg.content));
+                            
+                            if (!isDuplicate) {
+                                let role = 'user';
+                                if (msg.type === 'ai') role = 'assistant';
+                                if (msg.type === 'admin') role = 'admin'; // specialized coloring
+                                
+                                addMessage(role, msg.content, { 
+                                    fromPoll: true,
+                                    adminId: msg.admin_id
+                                });
+                                newMessages = true;
+                            }
+                            lastMessageTimestamp = msgTime;
+                        }
+                    });
+                    
+                    if (newMessages) {
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    }
+                }
+
+            } catch (e) {
+                console.error("Polling error:", e);
+            }
+        }
+        
+        function showToast(text) {
+            const toast = document.createElement('div');
+            toast.style.position = 'fixed';
+            toast.style.bottom = '20px';
+            toast.style.right = '20px';
+            toast.style.background = '#333';
+            toast.style.color = 'white';
+            toast.style.padding = '12px 24px';
+            toast.style.borderRadius = '4px';
+            toast.style.zIndex = '1000';
+            toast.textContent = text;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // ... existing code ...
+
+        // Toggle Admin Status
+        async function toggleAdminStatus() {
+            adminOnline = !adminOnline;
+            const btn = document.getElementById('toggleBtn');
+            const indicator = document.getElementById('statusIndicator');
+            const currentAdminEl = document.getElementById('currentAdmin');
+
+            if (adminOnline) {
+                btn.classList.remove('offline');
+                btn.classList.add('online');
+                btn.textContent = 'Admin Online ✓';
+                indicator.classList.add('online');
+                currentAdminEl.textContent = 'Admin #1 (John)';
+                
+                // Create admin in backend
+                await createAdmin('admin_001', 'John Doe', 'john@swedenrelocators.se');
+            } else {
+                btn.classList.remove('online');
+                btn.classList.add('offline');
+                btn.textContent = 'Admin Offline';
+                indicator.classList.remove('online');
+                currentAdminEl.textContent = 'None Online';
+                
+                // Set admin offline in backend
+                await setAdminOffline('admin_001');
+            }
+        }
+
+        // Create Admin
+        async function createAdmin(adminId, name, email) {
+            try {
+                const response = await fetch(`${API_BASE}/admin/create`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': ADMIN_KEY
+                    },
+                    body: JSON.stringify({
+                        adminId: adminId,
+                        adminName: name,
+                        adminEmail: email,
+                        maxQueueSize: 10
+                    })
+                });
+                console.log('Admin created:', await response.json());
+            } catch (error) {
+                console.error('Error creating admin:', error);
+            }
+        }
+
+        // Set Admin Offline
+        async function setAdminOffline(adminId) {
+            try {
+                const response = await fetch(`${API_BASE}/admin/${adminId}/status`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': ADMIN_KEY
+                    },
+                    body: JSON.stringify({ status: 'offline' })
+                });
+                console.log('Admin status updated:', await response.json());
+            } catch (error) {
+                console.error('Error updating admin status:', error);
+            }
+        }
+
+        // Send Message
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const userIdInput = document.getElementById('userIdInput');
+            const channelInput = document.getElementById('channelInput');
+            const message = input.value.trim();
+            const userId = userIdInput.value.trim() || 'test_user_001';
+            const channel = channelInput.value.trim() || 'webhook';
+
+            if (!message) return;
+
+            // Disable send button
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<span class="loading"></span>';
+
+            // Add user message to chat
+            addMessage('user', message);
+            input.value = '';
+
+            try {
+                // Call API
+                const payload = {
+                    message: message,
+                    userId: userId,
+                    channel: channel
+                };
+                
+                // If we have a session ID, include it
+                if (currentSessionId) {
+                    payload.sessionId = currentSessionId;
+                }
+
+                const response = await fetch(`${API_BASE}/webhook/ai-agent`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-API-Key': API_KEY
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.status === 401) {
+                    throw new Error('Authentication Failed: Invalid API Key');
+                }
+                
+                if (!response.ok) {
+                    throw new Error(`Server Error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Update Session ID and start polling
+                if (data.sessionId) {
+                    currentSessionId = data.sessionId;
+                    startPolling();
+                }
+                
+                // Add assistant response only if there is content
+                if (data.message && data.message.trim() !== '') {
+                    addMessage('assistant', data.message, {
+                        language: data.language,
+                        handoff: data.handoff,
+                        assignedTo: data.assignedTo,
+                        queueStatus: data.queueStatus,
+                        processingTime: data.processingTimeMs
+                    });
+                }
+
+
+                // Update stats
+                totalQueries++;
+                document.getElementById('totalQueries').textContent = totalQueries;
+                
+                if (data.handoff) {
+                    totalHandoffs++;
+                    document.getElementById('totalHandoffs').textContent = totalHandoffs;
+                }
+
+                document.getElementById('lastResponse').textContent = data.message.substring(0, 100) + '...';
+
+                // Refresh queue
+                await loadQueue();
+
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('assistant', `❌ Error: ${error.message}. Make sure the server is running on port 5678 and API keys are correct.`);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+            }
+        }
+
+        // Add Message to Chat
+        function addMessage(role, content, meta = {}) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            
+            // Map 'admin' role to 'assistant' class but add extra class for styling
+            let baseClass = role;
+            if (role === 'admin') baseClass = 'assistant admin-message';
+            
+            messageDiv.className = `message ${baseClass}`;
+
+            let metaHTML = '';
+            if (meta.language) {
+
+                metaHTML += `<div class="message-meta">Language: ${meta.language} | Time: ${meta.processingTime}ms</div>`;
+            }
+            if (meta.handoff) {
+                const badgeClass = meta.assignedTo ? 'assigned' : 'pending';
+                const badgeText = meta.assignedTo ? `✓ Assigned to ${meta.assignedTo}` : '⏳ In Queue';
+                metaHTML += `<div class="handoff-badge ${badgeClass}">${badgeText}</div>`;
+            }
+
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    ${content}
+                    ${metaHTML}
+                </div>
+            `;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Load Queue
+        async function loadQueue() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/queue`, {
+                    headers: { 'X-Admin-Key': ADMIN_KEY }
+                });
+                const data = await response.json();
+                
+                const queueList = document.getElementById('queueList');
+                
+                if (data.queue && data.queue.length > 0) {
+                    queueList.innerHTML = data.queue.map(item => `
+                        <div class="queue-item">
+                            <span class="status ${item.status}">${item.status.toUpperCase()}</span>
+                            <div><strong>User:</strong> ${item.user_id}</div>
+                            <div><strong>Message:</strong> ${item.user_message.substring(0, 50)}...</div>
+                            ${item.admin_id ? `<div><strong>Admin:</strong> ${item.admin_id}</div>` : ''}
+                        </div>
+                    `).join('');
+                } else {
+                    queueList.innerHTML = '<p style="color: #999; font-size: 13px; text-align: center;">No items in queue</p>';
+                }
+            } catch (error) {
+                console.error('Error loading queue:', error);
+            }
+        }
+
+        // Load queue every 5 seconds
+        setInterval(loadQueue, 5000);
+
+        // Check server health on load
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                console.log('Server health:', data);
+            } catch (error) {
+                console.error('Server not reachable. Please start the server with: uvicorn app:app --reload --port 5678');
+                addMessage('assistant', '⚠️ Server not reachable. Please start the server first.');
+            }
+        }
+
+        checkHealth();
+    </script>
+</body>
+</html>

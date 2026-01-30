@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ Analytics Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 10px 0;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-change {
+            font-size: 0.9em;
+            color: #27ae60;
+            margin-top: 10px;
+        }
+
+        .content-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .section-title {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .faq-list {
+            list-style: none;
+        }
+
+        .faq-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            transition: background 0.2s;
+        }
+
+        .faq-item:hover {
+            background: #e9ecef;
+        }
+
+        .faq-rank {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: #667eea;
+            color: white;
+            text-align: center;
+            line-height: 30px;
+            border-radius: 50%;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+
+        .faq-hits {
+            float: right;
+            background: #27ae60;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+
+        .faq-content {
+            color: #555;
+            margin-top: 8px;
+            padding-left: 45px;
+            font-size: 0.95em;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            transition: width 0.5s;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.3s;
+            margin: 10px 5px;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .efficiency-metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            font-weight: bold;
+            color: #555;
+        }
+
+        .metric-value {
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: white;
+            font-size: 1.5em;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 FAQ Analytics Dashboard</h1>
+
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-label">Cache Hit Rate</div>
+                <div class="stat-value" id="hitRate">--%</div>
+                <div class="stat-change">Performance metric</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Requests</div>
+                <div class="stat-value" id="totalRequests">--</div>
+                <div class="stat-change" id="cacheHits">-- from cache</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Cache Size</div>
+                <div class="stat-value" id="cacheSize">--</div>
+                <div class="stat-change" id="cacheUtil">-- utilization</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Time Saved</div>
+                <div class="stat-value" id="timeSaved">--s</div>
+                <div class="stat-change">Avg 2.5s per hit</div>
+            </div>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">Cache Performance</h2>
+            <div class="progress-bar">
+                <div class="progress-fill" id="hitRateBar" style="width: 0%">0%</div>
+            </div>
+
+            <div class="efficiency-metric">
+                <span class="metric-label">Queries Served from Cache:</span>
+                <span class="metric-value" id="cachedQueries">--</span>
+            </div>
+            <div class="efficiency-metric">
+                <span class="metric-label">Cache Misses:</span>
+                <span class="metric-value" id="cacheMisses">--</span>
+            </div>
+            <div class="efficiency-metric">
+                <span class="metric-label">Unique Queries:</span>
+                <span class="metric-value" id="uniqueQueries">--</span>
+            </div>
+            <div class="efficiency-metric">
+                <span class="metric-label">Oldest Cache Entry:</span>
+                <span class="metric-value" id="oldestEntry">--</span>
+            </div>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">🔥 Top 20 Popular FAQs</h2>
+            <ul class="faq-list" id="faqList">
+                <li class="loading pulse">Loading popular FAQs...</li>
+            </ul>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">⚙️ Cache Management</h2>
+            <button class="btn" onclick="refreshData()">🔄 Refresh Data</button>
+            <button class="btn" onclick="downloadReport()">📥 Download Report</button>
+            <button class="btn btn-danger" onclick="clearCache()">🗑️ Clear Cache</button>
+        </div>
+    </div>
+
+    <script>
+        async function fetchStats() {
+            try {
+                const response = await fetch('/analytics/faq/cache');
+                const data = await response.json();
+                return data.stats;
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+                return null;
+            }
+        }
+
+        async function fetchPopularFAQs() {
+            try {
+                const response = await fetch('/analytics/faq/popular?limit=20');
+                const data = await response.json();
+                return data.popular_faqs;
+            } catch (error) {
+                console.error('Error fetching popular FAQs:', error);
+                return [];
+            }
+        }
+
+        function updateStatsDisplay(stats) {
+            if (!stats) return;
+
+            document.getElementById('hitRate').textContent = `${stats.hit_rate_pct.toFixed(1)}%`;
+            document.getElementById('totalRequests').textContent = stats.total_requests;
+            document.getElementById('cacheHits').textContent = `${stats.hit_count} from cache`;
+            document.getElementById('cacheSize').textContent = `${stats.cache_size}/${stats.max_size}`;
+            document.getElementById('cacheUtil').textContent = `${stats.utilization_pct.toFixed(1)}% utilization`;
+            
+            const timeSaved = (stats.hit_count * 2.5).toFixed(1);
+            document.getElementById('timeSaved').textContent = `${timeSaved}s`;
+
+            document.getElementById('hitRateBar').style.width = `${stats.hit_rate_pct}%`;
+            document.getElementById('hitRateBar').textContent = `${stats.hit_rate_pct.toFixed(1)}%`;
+
+            document.getElementById('cachedQueries').textContent = stats.hit_count;
+            document.getElementById('cacheMisses').textContent = stats.miss_count;
+            document.getElementById('uniqueQueries').textContent = stats.unique_queries;
+            document.getElementById('oldestEntry').textContent = stats.oldest_entry_age || 'N/A';
+        }
+
+        function displayPopularFAQs(faqs) {
+            const list = document.getElementById('faqList');
+            
+            if (!faqs || faqs.length === 0) {
+                list.innerHTML = '<li style="padding: 20px; text-align: center; color: #999;">No FAQ data available yet</li>';
+                return;
+            }
+
+            list.innerHTML = faqs.map((faq, index) => `
+                <li class="faq-item">
+                    <span class="faq-rank">${index + 1}</span>
+                    <span class="faq-hits">${faq.hit_count} hits</span>
+                    <div class="faq-content">${faq.result_preview}</div>
+                </li>
+            `).join('');
+        }
+
+        async function refreshData() {
+            const stats = await fetchStats();
+            const faqs = await fetchPopularFAQs();
+            
+            updateStatsDisplay(stats);
+            displayPopularFAQs(faqs);
+        }
+
+        async function downloadReport() {
+            try {
+                const response = await fetch('/analytics/faq/report');
+                const data = await response.json();
+                
+                const blob = new Blob([JSON.stringify(data.report, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `faq-analytics-${new Date().toISOString()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                alert('Error downloading report: ' + error.message);
+            }
+        }
+
+        async function clearCache() {
+            if (!confirm('Are you sure you want to clear the entire FAQ cache? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/analytics/faq/cache/clear', { method: 'POST' });
+                const data = await response.json();
+                
+                alert(data.message);
+                await refreshData();
+            } catch (error) {
+                alert('Error clearing cache: ' + error.message);
+            }
+        }
+
+        // Initial load
+        refreshData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(refreshData, 30000);
+    </script>
+</body>
+</html>
