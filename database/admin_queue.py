@@ -46,74 +46,74 @@ async def assign_to_admin(
     """
     try:
         async with get_async_session() as session:
-            # Find available admin with least queue
-            query = (
-                select(AdminAvailability)
-                .where(
-                    and_(
-                        AdminAvailability.status == 'online',
-                        AdminAvailability.current_queue_count < AdminAvailability.max_queue_size
+            # Use a short transaction & row-level lock to avoid race conditions
+            assigned_admin = None
+            async with session.begin():
+                # Select a candidate admin and lock the row for update
+                query = (
+                    select(AdminAvailability)
+                    .where(
+                        and_(
+                            AdminAvailability.status == 'online',
+                            AdminAvailability.current_queue_count < AdminAvailability.max_queue_size
+                        )
                     )
+                    .order_by(AdminAvailability.current_queue_count, AdminAvailability.last_assigned_at)
+                    .limit(1)
+                    .with_for_update()
                 )
-                .order_by(AdminAvailability.current_queue_count)
-                .limit(1)
-            )
-            
-            result = await session.execute(query)
-            admin = result.scalar_one_or_none()
-            
-            if not admin:
-                # No available admin - add to pending queue
-                queue_entry = AdminQueue(
-                    session_id=session_id,
-                    user_id=user_id,
-                    user_message=user_message,
-                    ai_response=ai_response,
-                    status='pending',
-                    priority='normal',
-                    language=language,
-                    channel=channel,
-                    handoff_reason=handoff_reason,
-                    unsolved_score=unsolved_score,
-                    created_at=datetime.utcnow()
-                )
-                session.add(queue_entry)
-                await session.commit()
-                
-                logger.warning("No admin available - added to pending queue")
-                return None
-            
-            # Assign to admin
-            queue_entry = AdminQueue(
-                session_id=session_id,
-                user_id=user_id,
-                admin_id=admin.admin_id,
-                user_message=user_message,
-                ai_response=ai_response,
-                status='assigned',
-                priority='normal',
-                language=language,
-                channel=channel,
-                handoff_reason=handoff_reason,
-                unsolved_score=unsolved_score,
-                assigned_at=datetime.utcnow(),
-                created_at=datetime.utcnow()
-            )
-            
-            # Update admin queue count
-            admin.current_queue_count += 1
-            admin.last_assigned_at = datetime.utcnow()
-            
-            session.add(queue_entry)
-            await session.commit()
-            
-            logger.info(f"Assigned to admin {admin.admin_name}")
-            
-            return {
-                "admin_id": admin.admin_id,
-                "admin_name": admin.admin_name,
-                "admin_email": admin.admin_email
-            }
+
+                result = await session.execute(query)
+                admin = result.scalar_one_or_none()
+
+                if admin:
+                    # Update admin counters and insert assigned queue entry atomically
+                    admin.current_queue_count += 1
+                    admin.last_assigned_at = datetime.utcnow()
+
+                    queue_entry = AdminQueue(
+                        session_id=session_id,
+                        user_id=user_id,
+                        admin_id=admin.admin_id,
+                        user_message=user_message,
+                        ai_response=ai_response,
+                        status='assigned',
+                        priority='normal',
+                        language=language,
+                        channel=channel,
+                        handoff_reason=handoff_reason,
+                        unsolved_score=unsolved_score,
+                        assigned_at=datetime.utcnow(),
+                        created_at=datetime.utcnow()
+                    )
+                    session.add(queue_entry)
+
+                    assigned_admin = {
+                        "admin_id": admin.admin_id,
+                        "admin_name": admin.admin_name,
+                        "admin_email": admin.admin_email
+                    }
+                    logger.info(f"Assigned to admin {admin.admin_name}")
+                else:
+                    # No admin available - insert pending queue entry
+                    queue_entry = AdminQueue(
+                        session_id=session_id,
+                        user_id=user_id,
+                        user_message=user_message,
+                        ai_response=ai_response,
+                        status='pending',
+                        priority='normal',
+                        language=language,
+                        channel=channel,
+                        handoff_reason=handoff_reason,
+                        unsolved_score=unsolved_score,
+                        created_at=datetime.utcnow()
+                    )
+                    session.add(queue_entry)
+                    logger.warning("No admin available - added to pending queue")
+
+            # transaction committed here
+            return assigned_admin
             
     except Exception as e:
         logger.error(f"Error assigning to admin: {str(e)}")

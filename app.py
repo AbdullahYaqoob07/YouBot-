@@ -21,7 +21,7 @@ from config import settings
 from database.conversation import get_conversation_history as db_get_history
 from database.admin_queue import get_admin_queue, update_queue_status
 from database.models import AdminAvailability, get_async_session
-from sqlalchemy import select, update as sql_update
+from sqlalchemy import select, update as sql_update, desc
 from loguru import logger
 from utils.faq_cache import faq_cache
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -76,6 +76,39 @@ def sanitize_input(message: str, max_length: int = None) -> str:
     
     return message.strip()
 
+
+def clean_markup(text: str) -> str:
+    """Simple sanitizer to remove common Markdown artifacts and make responses cleaner for chat UIs.
+
+    - Removes triple/back ticks and inline code markers
+    - Strips bold/italic markers (*, **, _, __)
+    - Converts list markers ('*', '-') at line start to bullet points
+    - Collapses multiple blank lines
+    """
+    if not text:
+        return text
+
+    import re
+
+    # Remove code fences
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    # Remove inline code ticks
+    text = text.replace('`', '')
+    # Strip bold/italic markers
+    text = text.replace('**', '').replace('__', '').replace('*', '').replace('_', '')
+
+    # Convert lines starting with - or • to a consistent bullet
+    def _convert_list(m):
+        return '• ' + m.group(2).strip()
+
+    text = re.sub(r'^(\s*[-\*\u2022]+)\s*(.*)$', _convert_list, text, flags=re.M)
+
+    # Collapse multiple blank lines
+    text = re.sub(r"\n\s*\n+", "\n\n", text)
+
+    # Trim
+    return text.strip()
+
 # Configure logger
 logger.add(
     settings.LOG_FILE,
@@ -106,6 +139,42 @@ app.add_middleware(
 
 # Mount static files for frontend
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# Redis cache instance (initialized at startup)
+redis_cache = None
+
+
+# Startup event to pre-load embeddings and initialize Redis
+@app.on_event("startup")
+async def startup_event():
+    """Pre-load embeddings, vector store, and initialize Redis on startup"""
+    global redis_cache
+    
+    # Initialize Redis cache
+    try:
+        from utils.redis_cache import RedisCache
+        redis_cache = RedisCache()
+        await redis_cache.connect()
+        logger.info("✅ Redis cache connected!")
+    except Exception as e:
+        logger.warning(f"⚠️ Redis not available, using in-memory cache: {e}")
+        redis_cache = None
+    
+    # Pre-load embeddings
+    from tools.knowledge_base import create_knowledge_base_tool
+    logger.info("🚀 Pre-loading embeddings and vector store...")
+    await create_knowledge_base_tool()
+    logger.info("✅ Startup complete - embeddings cached!")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    global redis_cache
+    if redis_cache:
+        await redis_cache.close()
+        logger.info("Redis cache closed")
 
 
 # Request/Response Models
@@ -206,6 +275,13 @@ async def admin_dashboard():
     """Redirect to admin supervision dashboard"""
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/static/admin_dashboard.html")
+
+
+@app.get("/kb-management")
+async def kb_management():
+    """Redirect to KB management page"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/static/kb-management.html")
 
 
 @app.get("/health")
@@ -322,6 +398,10 @@ async def webhook_handler(
         # Fire and forget - don't wait for logging
         background_tasks.add_task(background_log)
         
+        # Normalize AI response formatting for UI readability
+        if final_state.get("ai_response"):
+            final_state["ai_response"] = clean_markup(final_state.get("ai_response"))
+
         # Handle spam case
         if final_state.get("is_spam"):
             logger.warning(f"Spam detected for user {message_request.userId}")
@@ -637,6 +717,12 @@ class AdminMessageRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000, description="Message to send")
 
 
+class AdminPreviewRequest(BaseModel):
+    """Request for admin to preview/grammar-check message before sending"""
+    admin_id: str = Field(..., min_length=1, description="Admin ID requesting preview")
+    message: str = Field(..., min_length=1, max_length=2000, description="Message to preview")
+
+
 class ReleaseConversationRequest(BaseModel):
     """Request to release conversation"""
     admin_id: str = Field(..., min_length=1, description="Admin ID releasing")
@@ -762,6 +848,38 @@ async def send_admin_message(
         raise HTTPException(status_code=500, detail="Failed to send message")
 
 
+@app.post("/admin/supervision/conversations/{session_id}/message/preview")
+async def preview_admin_message(
+    session_id: str,
+    request: AdminPreviewRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Preview/grammar-check an admin message using the comprehension agent.
+
+    This endpoint is explicitly invoked by the admin UI when the admin clicks
+    the preview/check button. It does NOT send or persist the message.
+    """
+    try:
+        # Lazy import to avoid startup dependency if LLM not configured
+        from nodes.comprehension_agent import check_message
+
+        result = await check_message(request.message)
+
+        return {
+            "status": "success",
+            "corrected": result.get("corrected"),
+            "suggestions": result.get("suggestions"),
+            "raw": result.get("raw")
+        }
+
+    except RuntimeError as re:
+        logger.error(f"Comprehension preview failed: {str(re)}")
+        raise HTTPException(status_code=503, detail=str(re))
+    except Exception as e:
+        logger.error(f"Error in preview_admin_message: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to run preview")
+
+
 @app.post("/admin/supervision/conversations/{session_id}/release")
 async def release_admin_conversation(
     session_id: str,
@@ -794,6 +912,378 @@ async def release_admin_conversation(
         raise HTTPException(status_code=500, detail="Failed to release conversation")
 
 
+# ============================================================================
+# KB CURATION ENDPOINTS
+# ============================================================================
+
+class LogUnansweredRequest(BaseModel):
+    """Request to log an unanswered question"""
+    session_id: str
+    question_text: str
+    context: Optional[dict] = None
+
+
+class LinkResponseRequest(BaseModel):
+    """Request to link admin response"""
+    response_text: str
+    category: Optional[str] = None
+    responder_name: Optional[str] = None
+
+
+class ApproveKBRequest(BaseModel):
+    """Request to approve for KB"""
+    admin_id: str
+    category: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class AddToKBRequest(BaseModel):
+    """Request to add to KB"""
+    admin_id: str
+
+
+class RemoveFromKBRequest(BaseModel):
+    """Request to remove from KB"""
+    admin_id: str
+    reason: Optional[str] = None
+
+
+@app.post("/kb-curation/log-unanswered")
+async def log_unanswered_question_endpoint(
+    request: LogUnansweredRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Log an unanswered question for KB curation (simplified for admin dashboard)
+    """
+    try:
+        from database.kb_curation import KBUnansweredQuestion
+        from database.models import get_async_session
+        
+        # Simple version for manual admin additions
+        async with get_async_session() as session:
+            question = KBUnansweredQuestion(
+                session_id=request.session_id,
+                user_id=request.context.get("admin_id", "unknown") if request.context else "unknown",
+                user_question=request.question_text,
+                user_language="unknown",
+                ai_response="",
+                handoff_reason="Admin manual addition",
+                unsolved_score=0.0,
+                status="pending",
+                created_at=datetime.utcnow()
+            )
+            
+            session.add(question)
+            await session.commit()
+            await session.refresh(question)
+            
+            question_id = question.id
+        
+        logger.info(f"Logged unanswered question {question_id} for session {request.session_id}")
+        return {
+            "success": True,
+            "question_id": question_id,
+            "message": "Question logged successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error logging unanswered question: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to log question: {str(e)}")
+
+
+@app.post("/kb-curation/{question_id}/link-response")
+async def link_admin_response_endpoint(
+    question_id: int,
+    request: LinkResponseRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Link admin response to a question
+    """
+    try:
+        from database.kb_curation import KBUnansweredQuestion
+        from database.models import get_async_session
+        
+        async with get_async_session() as session:
+            query = select(KBUnansweredQuestion).where(
+                KBUnansweredQuestion.id == question_id
+            )
+            
+            result = await session.execute(query)
+            question = result.scalar_one_or_none()
+            
+            if not question:
+                raise HTTPException(status_code=404, detail="Question not found")
+            
+            question.admin_id = request.responder_name or "admin"
+            question.admin_response = request.response_text
+            question.admin_responded_at = datetime.utcnow()
+            question.category = request.category
+            question.status = "reviewed"
+            question.updated_at = datetime.utcnow()
+            
+            await session.commit()
+        
+        logger.info(f"Linked response to question {question_id}")
+        return {
+            "success": True,
+            "response_id": question_id,
+            "message": "Response linked successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error linking response: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to link response: {str(e)}")
+
+
+@app.post("/kb-curation/{question_id}/approve")
+async def approve_for_kb_endpoint(
+    question_id: int,
+    request: ApproveKBRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Approve a Q&A pair for KB addition
+    """
+    try:
+        from database.kb_curation import approve_for_kb
+        
+        success = await approve_for_kb(
+            question_id=question_id,
+            admin_id=request.admin_id,
+            category=request.category,
+            notes=request.notes
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to approve question")
+        
+        logger.info(f"Approved question {question_id} for KB")
+        return {
+            "success": True,
+            "approval_id": question_id,
+            "message": "Approved for KB successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving for KB: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to approve: {str(e)}")
+
+
+@app.post("/kb-curation/add-to-kb/{question_id}")
+async def add_to_kb(
+    question_id: int,
+    request: AddToKBRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Ingest approved Q&A into Pinecone knowledge base using existing embeddings
+    """
+    try:
+        from database.kb_curation import get_qa_for_ingestion, mark_added_to_kb
+        from tools.knowledge_base import get_cached_embeddings, get_cached_vector_store
+        from pinecone import Pinecone
+        
+        # Get Q&A data
+        qa_data = await get_qa_for_ingestion(question_id)
+        
+        if not qa_data:
+            raise HTTPException(status_code=404, detail="Question not found or not approved")
+        
+        # Use cached embeddings (already initialized at startup)
+        embeddings = get_cached_embeddings()
+        if embeddings is None:
+            raise HTTPException(status_code=500, detail="Embeddings not initialized")
+        
+        # Get cached vector store
+        vector_store = get_cached_vector_store()
+        if vector_store is None:
+            raise HTTPException(status_code=500, detail="Vector store not initialized")
+        
+        # Generate FAQ ID
+        faq_id = f"faq_{question_id}_{int(datetime.utcnow().timestamp())}"
+        
+        # Create embedding for the question using cached embeddings
+        question_embedding = embeddings.embed_query(qa_data["question"])
+        
+        # Prepare metadata (matching your existing format)
+        # Note: Pinecone doesn't accept None values, so we filter them out
+        metadata = {
+            "faq_id": faq_id,
+            "question": qa_data["question"],
+            "answer": qa_data["answer"],
+            "category": qa_data.get("category") or "general",  # Default to "general" if None
+            "source": "admin_curated",
+            "type": "faq",
+            "document_id": faq_id,
+            "ingested_at": datetime.utcnow().isoformat(),
+            "admin_id": request.admin_id,
+            "question_id": str(question_id)  # Convert to string for Pinecone
+        }
+        
+        # Remove None values (Pinecone doesn't accept null)
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+        
+        # Get index from cached vector store
+        index = vector_store.index
+        
+        # Upsert to Pinecone
+        index.upsert(
+            vectors=[{
+                "id": faq_id,
+                "values": question_embedding,
+                "metadata": metadata
+            }],
+            namespace="sweden_relocators_v3"
+        )
+        
+        # Mark as added in database
+        await mark_added_to_kb(
+            question_id=question_id,
+            faq_id=faq_id,
+            admin_id=request.admin_id
+        )
+        
+        logger.info(f"Added question {question_id} to KB with FAQ ID {faq_id}")
+        return {
+            "success": True,
+            "faq_id": faq_id,
+            "message": "Successfully added to KB",
+            "nodes_added": 1
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Use repr() to avoid formatting issues with curly braces in error messages
+        error_msg = repr(e)
+        logger.error(f"Error adding to KB: {error_msg}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to add to KB: {str(e)}")
+
+
+@app.delete("/kb-curation/remove-from-kb/{question_id}")
+async def remove_from_kb(
+    question_id: int,
+    request: RemoveFromKBRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Remove a Q&A from Pinecone knowledge base
+    """
+    try:
+        from database.kb_curation import KBUnansweredQuestion
+        from database.models import get_async_session
+        from tools.knowledge_base import get_cached_vector_store
+        
+        # Get question record
+        async with get_async_session() as session:
+            query = select(KBUnansweredQuestion).where(
+                KBUnansweredQuestion.id == question_id
+            )
+            result = await session.execute(query)
+            question = result.scalar_one_or_none()
+            
+            if not question:
+                raise HTTPException(status_code=404, detail="Question not found")
+            
+            if not question.added_to_kb or not question.kb_document_id:
+                raise HTTPException(status_code=400, detail="Question not in KB")
+            
+            faq_id = question.kb_document_id
+            
+            # Get cached vector store
+            vector_store = get_cached_vector_store()
+            if vector_store is None:
+                raise HTTPException(status_code=500, detail="Vector store not initialized")
+            
+            # Delete from Pinecone
+            index = vector_store.index
+            index.delete(
+                ids=[faq_id],
+                namespace="sweden_relocators_v3"
+            )
+            
+            # Update database (soft delete - keep for audit trail)
+            question.added_to_kb = False
+            question.status = "removed_from_kb"
+            question.updated_at = datetime.utcnow()
+            if request.reason:
+                question.notes = f"Removed: {request.reason}" + (f"\n{question.notes}" if question.notes else "")
+            
+            await session.commit()
+        
+        logger.info(f"Removed question {question_id} (FAQ ID: {faq_id}) from KB by {request.admin_id}")
+        return {
+            "success": True,
+            "message": "Successfully removed from KB",
+            "faq_id": faq_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = repr(e)
+        logger.error(f"Error removing from KB: {error_msg}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to remove from KB: {str(e)}")
+
+
+@app.get("/kb-curation/items")
+async def get_kb_items(
+    status: Optional[str] = "added_to_kb",
+    limit: int = 100,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Get list of KB items (questions added to knowledge base)
+    """
+    try:
+        from database.kb_curation import KBUnansweredQuestion
+        from database.models import get_async_session
+        
+        async with get_async_session() as session:
+            # Build query
+            query = select(KBUnansweredQuestion)
+            
+            if status:
+                query = query.where(KBUnansweredQuestion.status == status)
+            
+            query = query.order_by(desc(KBUnansweredQuestion.added_to_kb_at)).limit(limit)
+            
+            result = await session.execute(query)
+            questions = result.scalars().all()
+            
+            items = []
+            for q in questions:
+                items.append({
+                    "id": q.id,
+                    "user_question": q.user_question,
+                    "admin_response": q.admin_response,
+                    "category": q.category,
+                    "kb_document_id": q.kb_document_id,
+                    "added_to_kb_at": q.added_to_kb_at.isoformat() if q.added_to_kb_at else None,
+                    "added_by_admin": q.added_by_admin,
+                    "source": "admin_curated",
+                    "status": q.status,
+                    "created_at": q.created_at.isoformat() if q.created_at else None
+                })
+        
+        return {
+            "success": True,
+            "items": items,
+            "count": len(items)
+        }
+        
+    except Exception as e:
+        error_msg = repr(e)
+        logger.error(f"Error fetching KB items: {error_msg}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch KB items: {str(e)}")
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler - logs full traceback but returns safe message"""
@@ -811,5 +1301,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=5678,
         reload=settings.DEBUG,
-        workers=1 if settings.DEBUG else settings.WORKERS
+        workers=1  # Use 1 worker to avoid multiple embedding loads
     )

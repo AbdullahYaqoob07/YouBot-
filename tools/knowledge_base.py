@@ -18,6 +18,17 @@ from utils.faq_cache import faq_cache
 _embeddings_cache = None
 _vector_store_cache = None
 
+
+def get_cached_embeddings():
+    """Get the cached embeddings instance (for reuse in other modules)"""
+    return _embeddings_cache
+
+
+def get_cached_vector_store():
+    """Get the cached vector store instance (for reuse in other modules)"""
+    return _vector_store_cache
+
+
 async def create_knowledge_base_tool():
     """
     Create knowledge base RAG tool
@@ -79,12 +90,14 @@ async def create_knowledge_base_tool():
         pc = Pinecone(api_key=settings.PINECONE_API_KEY)
         index = pc.Index(settings.PINECONE_INDEX)
         
-        # Create PineconeVectorStore
-        _vector_store_cache = PineconeVectorStore(
-            index=index,
-            embedding=_embeddings_cache,
-            namespace="sweden_relocators_v3"
-        )
+        # Store index directly - we'll use our own embeddings for queries
+        # Don't use PineconeVectorStore as it may create duplicate embeddings
+        class PineconeIndexWrapper:
+            """Wrapper to hold Pinecone index with same interface"""
+            def __init__(self, idx):
+                self.index = idx
+        
+        _vector_store_cache = PineconeIndexWrapper(index)
         
     elif settings.VECTOR_STORE_TYPE == "chroma":
         logger.info("Initializing Chroma vector store")
@@ -136,42 +149,8 @@ async def _cached_kb_search(query: str, language: str, embeddings, vector_store)
     Returns:
         Relevant information from the knowledge base
     """
-    # Check cache first (exact match or cross-language)
-    cached_result = faq_cache.get(query, language)
-    if cached_result:
-        result_text = cached_result['result']
-        
-        # If cross-language hit, translate the cached answer
-        if cached_result['needs_translation']:
-            try:
-                from langchain_groq import ChatGroq
-                llm = ChatGroq(
-                    model=settings.GROQ_MODEL,
-                    temperature=0.3,
-                    api_key=settings.GROQ_API_KEY
-                )
-                
-                translation_prompt = f"""Translate this FAQ response from {cached_result['cached_language']} to {language}.
-Keep the same structure and formatting.
-
-Original response:
-{result_text}
-
-Translated response in {language}:"""
-                
-                logger.info(f"Translating cached answer: {cached_result['cached_language']} → {language}")
-                translation_response = llm.invoke(translation_prompt)
-                translated = translation_response.content.strip()
-                
-                # Cache the translated version too for future requests
-                faq_cache.set(query, translated, language)
-                return translated
-                
-            except Exception as e:
-                logger.warning(f"Translation failed, using original: {e}")
-                return result_text
-        
-        return result_text
+    # NOTE: Cache check is now done in rag_agent.py before calling this function
+    # to avoid duplicate cache lookups. This function now only does the actual search.
     
     try:
         logger.info(f"Knowledge base search: {query}")
@@ -179,13 +158,13 @@ Translated response in {language}:"""
         # Use VECTOR_TOP_K from config if available, otherwise KNOWLEDGE_BASE_TOP_K
         top_k = getattr(settings, 'VECTOR_TOP_K', settings.KNOWLEDGE_BASE_TOP_K)
         
-        # Get Pinecone index from vector_store
-        from pinecone import Pinecone
-        pc = Pinecone(api_key=settings.PINECONE_API_KEY)
-        index = pc.Index(settings.PINECONE_INDEX)
-        
+        # Use cached vector store - already initialized with embeddings
         # Query Pinecone directly since LlamaIndex storage format isn't compatible with LangChain's parser
         query_embedding = embeddings.embed_query(query)
+        
+        # Get index from cached vector store
+        index = vector_store.index
+        
         raw_results = index.query(
             vector=query_embedding,
             top_k=top_k,

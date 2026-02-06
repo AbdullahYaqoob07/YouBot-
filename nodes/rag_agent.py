@@ -246,8 +246,8 @@ async def rag_agent_node(state: AgentState) -> AgentState:
             # Search knowledge base with reformulated query
             kb_results = None
             try:
-                # Call the tool - it will handle caching internally
-                kb_results = await search_kb_with_retry(search_query, "auto")
+                # Call the tool - use the same detected_lang for cache consistency!
+                kb_results = await search_kb_with_retry(search_query, detected_lang)
                 
                 state["knowledge_base_used"] = True
                 state["cache_hit"] = False

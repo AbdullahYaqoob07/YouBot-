@@ -411,6 +411,133 @@
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
+
+        /* Add to KB Modal */
+        .kb-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .kb-modal.active {
+            display: flex;
+        }
+
+        .kb-modal-content {
+            background: #16213e;
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            border: 2px solid #0f3460;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .kb-modal-header {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #00d9ff;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .kb-modal-body p {
+            color: #888;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .kb-preview-box {
+            background: #1a1a2e;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border: 1px solid #0f3460;
+        }
+
+        .kb-preview-box strong {
+            color: #00d9ff;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .kb-preview-box div {
+            color: #eee;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            padding: 0.5rem 0;
+        }
+
+        .kb-form-group {
+            margin-bottom: 1rem;
+        }
+
+        .kb-form-group label {
+            display: block;
+            color: #888;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .kb-form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 1rem;
+        }
+
+        .kb-form-group select:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+
+        .kb-modal-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            margin-top: 1.5rem;
+        }
+
+        .kb-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .kb-btn-primary {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+
+        .kb-btn-primary:hover {
+            background: #00c3e6;
+        }
+
+        .kb-btn-secondary {
+            background: #0f3460;
+            color: #888;
+        }
+
+        .kb-btn-secondary:hover {
+            background: #1a4a7a;
+            color: #eee;
+        }
     </style>
 </head>
 <body>
@@ -471,7 +598,48 @@
             
             <div class="admin-input" id="admin-input" style="display: none;">
                 <input type="text" id="message-input" placeholder="Type your message as admin..." disabled>
+                <button onclick="previewAdminMessage()" id="preview-btn" disabled style="background:#00d9ff;color:#000;margin-right:6px;">Preview</button>
                 <button onclick="sendAdminMessage()" id="send-btn" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add to KB Modal -->
+    <div class="kb-modal" id="kb-modal">
+        <div class="kb-modal-content">
+            <div class="kb-modal-header">
+                <span>🎉</span>
+                <span>Response Sent!</span>
+            </div>
+            <div class="kb-modal-body">
+                <p>Would you like to add this Q&A to the knowledge base? This will help the AI answer similar questions automatically.</p>
+                <div class="kb-preview-box">
+                    <div>
+                        <strong>❓ User Question:</strong>
+                        <div id="kb-question-preview"></div>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <strong>✅ Your Response:</strong>
+                        <div id="kb-answer-preview"></div>
+                    </div>
+                </div>
+                <div class="kb-form-group">
+                    <label>Category (Optional)</label>
+                    <select id="kb-category">
+                        <option value="">Auto-detect</option>
+                        <option value="visa">Visa & Immigration</option>
+                        <option value="housing">Housing</option>
+                        <option value="appointment">Appointment</option>
+                        <option value="pricing">Pricing</option>
+                        <option value="document">Documents</option>
+                        <option value="contact">Contact</option>
+                        <option value="general">General</option>
+                    </select>
+                </div>
+            </div>
+            <div class="kb-modal-actions">
+                <button class="kb-btn kb-btn-secondary" onclick="closeKBModal()">Not Now</button>
+                <button class="kb-btn kb-btn-primary" onclick="addToKB()">📚 Add to KB</button>
             </div>
         </div>
     </div>
@@ -657,6 +825,7 @@
             const endBtn = document.getElementById('btn-end');
             const messageInput = document.getElementById('message-input');
             const sendBtn = document.getElementById('send-btn');
+            const previewBtn = document.getElementById('preview-btn');
             
             if (isAdminTakeover) {
                 takeoverBtn.style.display = 'none';
@@ -664,6 +833,7 @@
                 endBtn.style.display = 'inline-block';
                 messageInput.disabled = false;
                 sendBtn.disabled = false;
+                if (previewBtn) previewBtn.disabled = false;
                 messageInput.placeholder = 'Type your message as admin...';
             } else {
                 takeoverBtn.style.display = 'inline-block';
@@ -671,6 +841,7 @@
                 endBtn.style.display = 'none';
                 messageInput.disabled = true;
                 sendBtn.disabled = true;
+                if (previewBtn) previewBtn.disabled = true;
                 messageInput.placeholder = 'Take over conversation to send messages...';
             }
         }
@@ -738,6 +909,7 @@
                     throw new Error(error.detail || 'Failed to send message');
                 }
                 
+                const sentMessage = message; // Store before clearing
                 input.value = '';
                 
                 // Add message to UI immediately
@@ -754,8 +926,61 @@
                 container.insertAdjacentHTML('beforeend', msgHtml);
                 container.scrollTop = container.scrollHeight;
                 
+                // Get the last user message to show in KB modal
+                const messages = container.querySelectorAll('.message.user');
+                const lastUserMessage = messages.length > 0 ? messages[messages.length - 1].querySelector('.message-content').textContent : 'Previous user question';
+                
+                // Show "Add to KB?" prompt
+                showKBModal(lastUserMessage, sentMessage);
+                
             } catch (error) {
                 console.error('Error sending message:', error);
+                showToast(error.message, 'error');
+            }
+        }
+
+        // Preview / grammar-check admin message
+        async function previewAdminMessage() {
+            if (!currentSession || !isAdminTakeover) return;
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            if (!message) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/supervision/conversations/${currentSession}/message/preview`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({ admin_id: getAdminId(), message: message })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Preview failed');
+                }
+
+                const data = await response.json();
+
+                // If LLM returned a corrected message different from original, offer to apply
+                const corrected = data.corrected || '';
+                const suggestions = data.suggestions || '';
+
+                if (corrected && corrected.trim() !== message) {
+                    if (confirm('Suggested edit:\n\n' + corrected + '\n\nApply suggested edit to your message?')) {
+                        input.value = corrected;
+                    } else if (suggestions) {
+                        alert('Suggestions:\n\n' + suggestions);
+                    }
+                } else if (suggestions) {
+                    alert('Suggestions:\n\n' + suggestions);
+                } else {
+                    showToast('No changes suggested', 'info');
+                }
+
+            } catch (error) {
+                console.error('Preview error:', error);
                 showToast(error.message, 'error');
             }
         }
@@ -820,6 +1045,129 @@
         
         // Auto-refresh every 5 seconds
         refreshInterval = setInterval(loadConversations, 5000);
+
+        // ============================================
+        // ADD TO KB FUNCTIONALITY
+        // ============================================
+        let kbQuestionId = null;
+        let kbQuestionText = '';
+        let kbAnswerText = '';
+
+        function showKBModal(questionText, answerText) {
+            kbQuestionText = questionText;
+            kbAnswerText = answerText;
+            
+            document.getElementById('kb-question-preview').textContent = questionText;
+            document.getElementById('kb-answer-preview').textContent = answerText;
+            document.getElementById('kb-modal').classList.add('active');
+        }
+
+        function closeKBModal() {
+            document.getElementById('kb-modal').classList.remove('active');
+            document.getElementById('kb-category').value = '';
+            kbQuestionText = '';
+            kbAnswerText = '';
+        }
+
+        async function addToKB() {
+            if (!kbQuestionText || !kbAnswerText) {
+                showToast('Missing question or answer', 'error');
+                return;
+            }
+
+            const category = document.getElementById('kb-category').value;
+
+            try {
+                // First, log as unanswered question (if not already logged)
+                const logResponse = await fetch(`${API_BASE}/kb-curation/log-unanswered`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        session_id: currentSession,
+                        question_text: kbQuestionText,
+                        context: {
+                            admin_added: true,
+                            added_by: getAdminId()
+                        }
+                    })
+                });
+
+                if (!logResponse.ok) {
+                    throw new Error('Failed to log question');
+                }
+
+                const logData = await logResponse.json();
+                const questionId = logData.question_id || logData.data?.question_id;
+
+                if (!questionId) {
+                    throw new Error('No question ID returned');
+                }
+
+                // Link admin response
+                const linkResponse = await fetch(`${API_BASE}/kb-curation/${questionId}/link-response`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        response_text: kbAnswerText,
+                        category: category || null,
+                        responder_name: getAdminId()
+                    })
+                });
+
+                if (!linkResponse.ok) {
+                    throw new Error('Failed to link response');
+                }
+
+                // Approve for KB
+                const approveResponse = await fetch(`${API_BASE}/kb-curation/${questionId}/approve`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        category: category || null,
+                        notes: 'Added from admin dashboard'
+                    })
+                });
+
+                if (!approveResponse.ok) {
+                    throw new Error('Failed to approve for KB');
+                }
+
+                // Add to KB (ingest into Pinecone)
+                const addResponse = await fetch(`${API_BASE}/kb-curation/add-to-kb/${questionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId()
+                    })
+                });
+
+                const addData = await addResponse.json();
+
+                if (addData.success) {
+                    closeKBModal();
+                    showToast(`✅ Added to KB! FAQ ID: ${addData.faq_id || 'N/A'}`, 'success');
+                } else {
+                    throw new Error(addData.error || 'Failed to add to KB');
+                }
+
+            } catch (error) {
+                console.error('Error adding to KB:', error);
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
     </script>
 </body>
 </html>

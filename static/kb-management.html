@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KB Management - Sweden Relocators AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #16213e;
+            padding: 1rem 2rem;
+            border-bottom: 2px solid #0f3460;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+        }
+        
+        .back-btn {
+            background: #0f3460;
+            color: #00d9ff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        
+        .back-btn:hover {
+            background: #1a4a7a;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        
+        .config-panel {
+            background: #16213e;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .config-panel label {
+            color: #888;
+        }
+        
+        .config-panel input {
+            padding: 0.5rem;
+            border: 1px solid #0f3460;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #eee;
+            width: 300px;
+        }
+        
+        .search-bar {
+            background: #16213e;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .search-bar input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid #0f3460;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 1rem;
+        }
+        
+        .search-bar button {
+            padding: 0.75rem 2rem;
+            background: #00d9ff;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .search-bar button:hover {
+            background: #00c3e6;
+        }
+        
+        .kb-items {
+            display: grid;
+            gap: 1rem;
+        }
+        
+        .kb-item {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 1.5rem;
+            transition: all 0.3s;
+        }
+        
+        .kb-item:hover {
+            border-color: #00d9ff;
+            transform: translateY(-2px);
+        }
+        
+        .kb-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+        
+        .kb-item-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .kb-item-badge {
+            background: #0f3460;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+        }
+        
+        .kb-item-badge.admin {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+        
+        .kb-item-question {
+            font-size: 1.1rem;
+            color: #00d9ff;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .kb-item-answer {
+            color: #ccc;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+        
+        .kb-item-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 1rem;
+            border-top: 1px solid #0f3460;
+        }
+        
+        .kb-item-info {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .remove-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 0.5rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .remove-btn:hover {
+            background: #ff5252;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 4rem;
+            color: #888;
+        }
+        
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            color: white;
+            animation: slideIn 0.3s;
+            z-index: 1000;
+        }
+        
+        .toast.success { background: #00ff88; color: #000; }
+        .toast.error { background: #ff6b6b; }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 Knowledge Base Management</h1>
+        <a href="/admin" class="back-btn">← Back to Dashboard</a>
+    </div>
+    
+    <div class="container">
+        <div class="config-panel">
+            <label>Admin Key:</label>
+            <input type="password" id="admin-key" placeholder="Enter admin API key">
+            <label>Admin ID:</label>
+            <input type="text" id="admin-id" placeholder="Your admin ID" value="admin_default">
+        </div>
+        
+        <div class="search-bar">
+            <input type="text" id="search-input" placeholder="Search KB items by question or answer...">
+            <button onclick="searchKB()">🔍 Search</button>
+            <button onclick="loadAllKBItems()" style="background: #0f3460; color: #00d9ff;">📋 View All</button>
+        </div>
+        
+        <div id="kb-items" class="kb-items">
+            <div class="loading">Loading KB items...</div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = window.location.origin;
+        
+        function getAdminKey() {
+            return document.getElementById('admin-key').value;
+        }
+        
+        function getAdminId() {
+            return document.getElementById('admin-id').value || 'admin_default';
+        }
+        
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+        
+        async function loadAllKBItems() {
+            const container = document.getElementById('kb-items');
+            container.innerHTML = '<div class="loading">Loading KB items from database...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/kb-curation/items?status=added_to_kb&limit=100`, {
+                    headers: {
+                        'X-Admin-Key': getAdminKey()
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to load KB items');
+                }
+                
+                const data = await response.json();
+                displayKBItems(data.items || []);
+                
+            } catch (error) {
+                console.error('Error loading KB items:', error);
+                container.innerHTML = `<div class="empty-state">
+                    <p>❌ Error loading KB items: ${error.message}</p>
+                    <p style="margin-top: 1rem; font-size: 0.9rem;">Make sure you've entered a valid admin key.</p>
+                </div>`;
+            }
+        }
+        
+        function displayKBItems(items) {
+            const container = document.getElementById('kb-items');
+            
+            if (items.length === 0) {
+                container.innerHTML = `<div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    <p>No KB items found</p>
+                </div>`;
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="kb-item">
+                    <div class="kb-item-header">
+                        <div class="kb-item-meta">
+                            <span class="kb-item-badge ${item.source === 'admin_curated' ? 'admin' : ''}">
+                                ${item.category || 'general'}
+                            </span>
+                            <span class="kb-item-badge">
+                                ${item.source || 'unknown'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="kb-item-question">
+                        ❓ ${escapeHtml(item.user_question || item.question)}
+                    </div>
+                    <div class="kb-item-answer">
+                        ${escapeHtml(item.admin_response || item.answer)}
+                    </div>
+                    <div class="kb-item-footer">
+                        <div class="kb-item-info">
+                            <div>FAQ ID: ${item.kb_document_id || item.faq_id || 'N/A'}</div>
+                            <div>Added: ${new Date(item.added_to_kb_at || item.created_at).toLocaleString()}</div>
+                            <div>By: ${item.added_by_admin || 'Unknown'}</div>
+                        </div>
+                        <button class="remove-btn" onclick="removeFromKB(${item.id}, '${item.kb_document_id || item.faq_id}')">
+                            🗑️ Remove from KB
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        async function removeFromKB(questionId, faqId) {
+            if (!confirm(`Remove this Q&A from the knowledge base?\n\nFAQ ID: ${faqId}\n\nThis action will delete it from Pinecone but keep the database record for audit.`)) {
+                return;
+            }
+            
+            const reason = prompt('Reason for removal (optional):');
+            
+            try {
+                const response = await fetch(`${API_BASE}/kb-curation/remove-from-kb/${questionId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        reason: reason || 'Removed via KB Management'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`✅ Removed from KB: ${faqId}`, 'success');
+                    loadAllKBItems(); // Reload list
+                } else {
+                    throw new Error(data.detail || 'Failed to remove from KB');
+                }
+                
+            } catch (error) {
+                console.error('Error removing from KB:', error);
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Load items on page load
+        loadAllKBItems();
+    </script>
+</body>
+</html>

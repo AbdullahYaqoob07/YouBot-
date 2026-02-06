@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Response - Example Integration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f3f4f6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .question-card {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .question-label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 10px;
+        }
+
+        .question-text {
+            color: #1f2937;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+            margin-left: 10px;
+        }
+
+        /* Modal styles (matching kb-curation.html) */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-body p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .preview-box {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .preview-box strong {
+            color: #374151;
+        }
+
+        .preview-box div {
+            margin-top: 5px;
+            color: #4b5563;
+            font-size: 14px;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 Admin Response Form</h1>
+        <p style="color: #666; margin-bottom: 30px;">Example of how to integrate "Add to KB" prompt after responding</p>
+
+        <div class="question-card">
+            <div class="question-label">❓ User Question:</div>
+            <div class="question-text" id="user-question">
+                How can I reschedule my appointment?
+            </div>
+        </div>
+
+        <form id="response-form">
+            <div class="form-group">
+                <label>Your Response *</label>
+                <textarea id="admin-response" required placeholder="Type your response here..."></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary">✓ Submit Response</button>
+            <button type="button" class="btn btn-secondary" onclick="window.history.back()">Cancel</button>
+        </form>
+    </div>
+
+    <!-- Quick Add to KB Modal -->
+    <div class="modal" id="quick-add-kb-modal">
+        <div class="modal-content">
+            <div class="modal-header">🎉 Response Submitted!</div>
+            <div class="modal-body">
+                <p>Would you like to add this Q&A to the knowledge base?</p>
+                <div class="preview-box">
+                    <div>
+                        <strong>Question:</strong>
+                        <div id="modal-question"></div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <strong>Your Response:</strong>
+                        <div id="modal-answer"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Category (Optional)</label>
+                    <select id="quick-add-category">
+                        <option value="">Auto-detect</option>
+                        <option value="appointment">Appointment</option>
+                        <option value="visa">Visa & Immigration</option>
+                        <option value="housing">Housing</option>
+                        <option value="pricing">Pricing</option>
+                        <option value="document">Documents</option>
+                        <option value="contact">Contact</option>
+                        <option value="general">General</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="skipAddToKB()">Not Now</button>
+                <button type="button" class="btn btn-primary" onclick="addToKB()">📚 Add to KB</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000/api';
+        const ADMIN_API_KEY = 'your_admin_api_key_here';
+        const ADMIN_ID = 'admin_01';
+
+        let currentQuestionId = 1; // This would come from your backend
+        let currentQuestionText = '';
+        let currentResponseText = '';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get question from URL params or backend
+            currentQuestionText = document.getElementById('user-question').textContent;
+        });
+
+        // Handle form submission
+        document.getElementById('response-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const responseText = document.getElementById('admin-response').value.trim();
+            if (!responseText) return;
+
+            try {
+                // Step 1: Submit the admin response to backend
+                const response = await fetch(`${API_BASE_URL}/admin-queue/${currentQuestionId}/respond`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${ADMIN_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        admin_id: ADMIN_ID,
+                        response_text: responseText
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Step 2: Show "Add to KB?" modal
+                    currentResponseText = responseText;
+                    showQuickAddModal();
+                } else {
+                    alert('Failed to submit response');
+                }
+            } catch (error) {
+                console.error('Error submitting response:', error);
+                alert('Network error');
+            }
+        });
+
+        function showQuickAddModal() {
+            document.getElementById('modal-question').textContent = currentQuestionText;
+            document.getElementById('modal-answer').textContent = currentResponseText;
+            document.getElementById('quick-add-kb-modal').classList.add('active');
+        }
+
+        function closeQuickAddModal() {
+            document.getElementById('quick-add-kb-modal').classList.remove('active');
+            // Optionally redirect to another page
+            // window.location.href = '/admin/queue';
+        }
+
+        function skipAddToKB() {
+            closeQuickAddModal();
+            alert('✓ Response saved. You can add it to KB later from the curation dashboard.');
+            // Redirect to admin queue or dashboard
+            // window.location.href = '/admin/queue';
+        }
+
+        async function addToKB() {
+            const category = document.getElementById('quick-add-category').value;
+
+            try {
+                // Step 1: Link the response (if not already done)
+                const linkResponse = await fetch(`${API_BASE_URL}/kb-curation/${currentQuestionId}/link-response`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${ADMIN_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        response_text: currentResponseText,
+                        category: category || null
+                    })
+                });
+
+                // Step 2: Approve for KB
+                const approveResponse = await fetch(`${API_BASE_URL}/kb-curation/${currentQuestionId}/approve`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${ADMIN_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        admin_id: ADMIN_ID,
+                        category: category || null,
+                        notes: 'Quick add to KB'
+                    })
+                });
+
+                if (!approveResponse.ok) {
+                    alert('Failed to approve question');
+                    return;
+                }
+
+                // Step 3: Add to KB (ingest into Pinecone)
+                const addResponse = await fetch(`${API_BASE_URL}/kb-curation/add-to-kb/${currentQuestionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${ADMIN_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const addData = await addResponse.json();
+
+                if (addData.success) {
+                    closeQuickAddModal();
+                    alert(`✅ Added to knowledge base! FAQ ID: ${addData.faq_id || 'N/A'}`);
+                    // Redirect to admin queue or dashboard
+                    // window.location.href = '/admin/queue';
+                } else {
+                    alert('Failed to add to KB: ' + (addData.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error adding to KB:', error);
+                alert('Network error');
+            }
+        }
+    </script>
+</body>
+</html>
