@@ -352,6 +352,48 @@ class FAQCacheManager:
             ))[:50])  # Top 50 query patterns
         }
     
+    def invalidate_query(self, query: str, language: str = None):
+        """
+        Invalidate cache for a specific query
+        Useful when a question is answered by admin and added to KB
+        
+        Args:
+            query: The question text
+            language: Language of query (optional)
+        """
+        removed_count = 0
+        
+        # Remove exact language match
+        if language:
+            exact_key = self._get_cache_key(query, language)
+            if exact_key in self._cache:
+                del self._cache[exact_key]
+                removed_count += 1
+                logger.debug(f"Invalidated exact cache entry for query: {query[:50]}... (language: {language})")
+        
+        # Remove semantic match (language-agnostic)
+        semantic_key = self._get_semantic_key(query)
+        if semantic_key in self._cache:
+            del self._cache[semantic_key]
+            removed_count += 1
+            logger.debug(f"Invalidated semantic cache entry for query: {query[:50]}...")
+        
+        # Also search for any entries with similar normalized form
+        normalized = self._normalize_query(query)
+        keys_to_remove = []
+        for key, (cached_query, _, _, _, _, _) in self._cache.items():
+            if self._normalize_query(cached_query) == normalized:
+                keys_to_remove.append(key)
+        
+        for key in keys_to_remove:
+            del self._cache[key]
+            removed_count += len(keys_to_remove)
+        
+        if removed_count > 0:
+            logger.info(f"Invalidated {removed_count} cache entries for query: {query[:50]}...")
+        else:
+            logger.debug(f"No cache entries found to invalidate for query: {query[:50]}...")
+    
     def clear(self):
         """Clear all cache data and reset analytics"""
         self._cache.clear()

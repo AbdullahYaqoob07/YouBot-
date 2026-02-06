@@ -1149,11 +1149,25 @@ async def add_to_kb(
             admin_id=request.admin_id
         )
         
-        logger.info(f"Added question {question_id} to KB with FAQ ID {faq_id}")
+        # CRITICAL: Invalidate cache for this question
+        # So next time it's asked, it searches the KB instead of returning cached "requires_human"
+        faq_cache.invalidate_query(qa_data["question"], qa_data.get("language", "English"))
+        
+        # Also invalidate Redis cache if available
+        global redis_cache
+        if redis_cache:
+            try:
+                # Clear from Redis as well
+                await redis_cache.delete(qa_data["question"], qa_data.get("language", "English"))
+                logger.info(f"Invalidated Redis cache for question: {qa_data['question'][:50]}...")
+            except Exception as e:
+                logger.warning(f"Failed to invalidate Redis cache: {e}")
+        
+        logger.info(f"Added question {question_id} to KB with FAQ ID {faq_id} and invalidated cache")
         return {
             "success": True,
             "faq_id": faq_id,
-            "message": "Successfully added to KB",
+            "message": "Successfully added to KB and cache invalidated",
             "nodes_added": 1
         }
         

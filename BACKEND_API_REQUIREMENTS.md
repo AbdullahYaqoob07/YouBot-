@@ -385,6 +385,8 @@ All endpoints should use standard HTTP methods and return JSON responses.
 
 **Purpose:** Mark Q&A as successfully added to knowledge base
 
+**Important:** After marking as added, the AI system will automatically **invalidate its cache** for this question. This ensures that when users ask the same question again, the system will search the KB (which now has the answer) instead of returning a cached "requires human" response.
+
 **Request Body:**
 ```json
 {
@@ -398,7 +400,8 @@ All endpoints should use standard HTTP methods and return JSON responses.
 {
   "question_id": "string",
   "status": "added_to_kb",
-  "kb_document_id": "string"
+  "kb_document_id": "string",
+  "cache_invalidated": true
 }
 ```
 
