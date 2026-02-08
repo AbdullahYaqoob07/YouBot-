@@ -229,6 +229,136 @@
             padding: 2rem;
             color: #888;
         }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: #16213e;
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .modal-header h2 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+        }
+        
+        .close-btn:hover {
+            color: #fff;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #00d9ff;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #0f3460;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+        
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+        
+        .form-actions button {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        
+        .btn-primary {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+        
+        .btn-primary:hover {
+            background: #00b8d4;
+        }
+        
+        .btn-secondary {
+            background: #0f3460;
+            color: #888;
+        }
+        
+        .btn-secondary:hover {
+            background: #1a4a7a;
+            color: #eee;
+        }
+        
+        .edit-btn {
+            background: #ffa500;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 0.5rem;
+        }
+        
+        .edit-btn:hover {
+            background: #ff8c00;
+        }
     </style>
 </head>
 <body>
@@ -249,6 +379,7 @@
             <input type="text" id="search-input" placeholder="Search KB items by question or answer...">
             <button onclick="searchKB()">🔍 Search</button>
             <button onclick="loadAllKBItems()" style="background: #0f3460; color: #00d9ff;">📋 View All</button>
+            <button onclick="openAddModal()" style="background: #00ff88; color: #1a1a2e;">➕ Add New Entry</button>
         </div>
         
         <div id="kb-items" class="kb-items">
@@ -256,8 +387,112 @@
         </div>
     </div>
     
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>✏️ Edit KB Entry</h2>
+                <button class="close-btn" onclick="closeEditModal()">×</button>
+            </div>
+            
+            <div class="form-group">
+                <label>FAQ ID (Read-only)</label>
+                <input type="text" id="edit-faq-id" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label>Question</label>
+                <textarea id="edit-question" placeholder="Enter question text..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Answer</label>
+                <textarea id="edit-answer" placeholder="Enter answer text..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Category</label>
+                <select id="edit-category">
+                    <option value="general">General</option>
+                    <option value="visa">Visa</option>
+                    <option value="work_permit">Work Permit</option>
+                    <option value="housing">Housing</option>
+                    <option value="banking">Banking</option>
+                    <option value="personal_number">Personal Number</option>
+                    <option value="culture">Culture & Integration</option>
+                    <option value="documentation">Documentation</option>
+                    <option value="cost_of_living">Cost of Living</option>
+                    <option value="jobs">Jobs & Employment</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            
+            <div class="form-actions">
+                <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button class="btn-primary" onclick="submitEdit()">💾 Save Changes</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add New Modal -->
+    <div id="add-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>➕ Add New KB Entry</h2>
+                <button class="close-btn" onclick="closeAddModal()">×</button>
+            </div>
+            
+            <div class="form-group">
+                <label>Question *</label>
+                <textarea id="add-question" placeholder="Enter question text..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Answer *</label>
+                <textarea id="add-answer" placeholder="Enter answer text..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Category</label>
+                <select id="add-category">
+                    <option value="general">General</option>
+                    <option value="visa">Visa</option>
+                    <option value="work_permit">Work Permit</option>
+                    <option value="housing">Housing</option>
+                    <option value="banking">Banking</option>
+                    <option value="personal_number">Personal Number</option>
+                    <option value="culture">Culture & Integration</option>
+                    <option value="documentation">Documentation</option>
+                    <option value="cost_of_living">Cost of Living</option>
+                    <option value="jobs">Jobs & Employment</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Language</label>
+                <select id="add-language">
+                    <option value="English">English</option>
+                    <option value="Swedish">Swedish</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="French">French</option>
+                    <option value="German">German</option>
+                    <option value="Arabic">Arabic</option>
+                    <option value="Urdu">Urdu</option>
+                    <option value="Hindi">Hindi</option>
+                </select>
+            </div>
+            
+            <div class="form-actions">
+                <button class="btn-secondary" onclick="closeAddModal()">Cancel</button>
+                <button class="btn-primary" onclick="submitAdd()">💾 Add to KB</button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         const API_BASE = window.location.origin;
+        let currentEditingId = null;
         
         function getAdminKey() {
             return document.getElementById('admin-key').value;
@@ -342,9 +577,14 @@
                             <div>Added: ${new Date(item.added_to_kb_at || item.created_at).toLocaleString()}</div>
                             <div>By: ${item.added_by_admin || 'Unknown'}</div>
                         </div>
-                        <button class="remove-btn" onclick="removeFromKB(${item.id}, '${item.kb_document_id || item.faq_id}')">
-                            🗑️ Remove from KB
-                        </button>
+                        <div>
+                            <button class="edit-btn" onclick="openEditModal(${item.id}, '${escapeHtml(item.user_question || item.question)}', '${escapeHtml(item.admin_response || item.answer)}', '${item.category || 'general'}', '${item.kb_document_id || item.faq_id}')">
+                                ✏️ Edit
+                            </button>
+                            <button class="remove-btn" onclick="removeFromKB(${item.id}, '${item.kb_document_id || item.faq_id}')">
+                                🗑️ Remove
+                            </button>
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -390,6 +630,144 @@
             div.textContent = text;
             return div.innerHTML;
         }
+        
+        function openEditModal(questionId, question, answer, category, faqId) {
+            currentEditingId = questionId;
+            
+            // Decode HTML entities
+            const decodeHtml = (html) => {
+                const txt = document.createElement('textarea');
+                txt.innerHTML = html;
+                return txt.value;
+            };
+            
+            document.getElementById('edit-faq-id').value = faqId;
+            document.getElementById('edit-question').value = decodeHtml(question);
+            document.getElementById('edit-answer').value = decodeHtml(answer);
+            document.getElementById('edit-category').value = category || 'general';
+            
+            document.getElementById('edit-modal').classList.add('active');
+        }
+        
+        function closeEditModal() {
+            document.getElementById('edit-modal').classList.remove('active');
+            currentEditingId = null;
+        }
+        
+        async function submitEdit() {
+            if (!currentEditingId) {
+                showToast('❌ No item selected for editing', 'error');
+                return;
+            }
+            
+            const question = document.getElementById('edit-question').value.trim();
+            const answer = document.getElementById('edit-answer').value.trim();
+            const category = document.getElementById('edit-category').value;
+            
+            if (!question || !answer) {
+                showToast('❌ Question and answer are required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/kb-curation/update-kb/${currentEditingId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        question: question,
+                        answer: answer,
+                        category: category
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`✅ ${data.message}`, 'success');
+                    closeEditModal();
+                    loadAllKBItems(); // Reload list
+                } else {
+                    throw new Error(data.detail || 'Failed to update KB entry');
+                }
+                
+            } catch (error) {
+                console.error('Error updating KB:', error);
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Close modal when clicking outside
+        document.getElementById('edit-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeEditModal();
+            }
+        });
+        
+        function openAddModal() {
+            document.getElementById('add-question').value = '';
+            document.getElementById('add-answer').value = '';
+            document.getElementById('add-category').value = 'general';
+            document.getElementById('add-language').value = 'English';
+            document.getElementById('add-modal').classList.add('active');
+        }
+        
+        function closeAddModal() {
+            document.getElementById('add-modal').classList.remove('active');
+        }
+        
+        async function submitAdd() {
+            const question = document.getElementById('add-question').value.trim();
+            const answer = document.getElementById('add-answer').value.trim();
+            const category = document.getElementById('add-category').value;
+            const language = document.getElementById('add-language').value;
+            
+            if (!question || !answer) {
+                showToast('❌ Question and answer are required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/kb-curation/manual-add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        question: question,
+                        answer: answer,
+                        category: category,
+                        language: language
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`✅ ${data.message} (FAQ ID: ${data.faq_id})`, 'success');
+                    closeAddModal();
+                    loadAllKBItems(); // Reload list
+                } else {
+                    throw new Error(data.detail || 'Failed to add KB entry');
+                }
+                
+            } catch (error) {
+                console.error('Error adding to KB:', error);
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Close add modal when clicking outside
+        document.getElementById('add-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeAddModal();
+            }
+        });
         
         // Load items on page load
         loadAllKBItems();

@@ -15,6 +15,7 @@ Purpose: handoff-ready spec for backend developer — tables, important queries,
   - `admin_queue` — pending and assigned items
   - `admin_messages` — messages that admins send during takeover
   - `analytics_events` — telemetry for monitoring
+  - `kb_unanswered_questions` — KB curation and manual entries (see KB Curation section below)
 
 **Primary flows**
 - Incoming message: Adapter → POST `/webhook/ai-agent` (body: `message`, `userId`, `channel`, optional `sessionId`, `userName`, `userPhone`) → `process_message()`
@@ -35,6 +36,22 @@ Purpose: handoff-ready spec for backend developer — tables, important queries,
 **Indexes & performance**
 - Ensure indexes on `session_id`, `user_id`, `status`, `created_at`, and `last_activity` (provided in `supervision_schema.sql`).
 - Archive `conversation_logs` periodically or partition by date if table grows large.
+
+**KB Curation Database Updates (NEW)**
+The `kb_unanswered_questions` table now supports:
+1. **Manual KB Entry Creation**: New status value `"manually_added"` for Q&As added directly by admins without user questions
+2. **KB Entry Updates**: Support for updating existing entries (question text, answer text, category) with tracking via `updated_at` and `responded_by_admin` fields
+3. **Required Fields for New Operations**:
+   - `status` enum: Must include "manually_added" value
+   - `responded_by_admin` VARCHAR(255): Tracks admin who last modified entry
+   - `updated_at` DATETIME: Tracks last modification time
+   
+**KB Curation Operations**:
+- **Manual Add**: Creates new entry with status='manually_added', generates embeddings, adds to Pinecone
+- **Update**: Modifies question/answer/category, regenerates embeddings if question changes, invalidates caches
+- **Remove**: Soft delete (marks added_to_kb=0, status='removed_from_kb')
+
+See `kb_curation_schema.sql` for full table definition.
 
 **Security & adapter notes**
 - The app supports unauthenticated user messages (the webhook can be left open) but you should:
@@ -57,9 +74,13 @@ mysql -u agent_user -p sweden_relocators_ai < supervision_schema.sql
 
 **Dev integration checklist for backend developer**
 - Run `supervision_schema.sql` to create tables and views.
+- Run `kb_curation_schema.sql` to create KB curation tables (includes `kb_unanswered_questions` table).
 - Confirm `settings.DATABASE_URL` points to the DB and credentials use `agent_user`.
 - Implement `assign_to_admin()` using a transaction with `SELECT ... FOR UPDATE` (example in the SQL file).
 - Ensure admin endpoints require `ADMIN_API_KEY`.
+- **NEW**: Implement KB Curation API endpoints (4.8 - 4.9 in BACKEND_API_REQUIREMENTS.md):
+  - PUT `/kb-curation/update-kb/{question_id}` - Update existing KB entry
+  - POST `/kb-curation/manual-add` - Manually add new KB entry
 - Add monitoring queries for queue length and average wait time (use `admin_queue` and `v_active_conversations_summary`).
 
 **Contact / Handoff notes**

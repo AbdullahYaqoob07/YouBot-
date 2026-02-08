@@ -240,6 +240,13 @@ async def process_message(
         graph = await get_agent_graph()
         final_state = await graph.ainvoke(initial_state, config)
         return final_state
+    except KeyError as ke:
+        # Handle missing state keys gracefully
+        logger.error(f"Missing state key for {user_id}: {str(ke)}", exc_info=True)
+        initial_state["error"] = f"State error: {str(ke)}"
+        initial_state["ai_response"] = "I apologize, but I encountered an error. Let me connect you with our team."
+        initial_state["requires_human"] = True
+        return initial_state
     except Exception as e:
         # Log error with traceback and return state with error
         logger.error(f"Error in process_message for {user_id}: {str(e)}", exc_info=True)

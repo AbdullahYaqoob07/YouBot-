@@ -9,6 +9,87 @@ from database.analytics import log_analytics_event
 from config import settings
 from loguru import logger
 import time
+from datetime import datetime
+import pytz
+from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage
+
+
+def is_within_office_hours() -> bool:
+    """
+    Check if current time is within office hours
+    Office hours: Monday to Friday, 10:00 AM – 6:00 PM Swedish Standard Time
+    """
+    sweden_tz = pytz.timezone('Europe/Stockholm')
+    now = datetime.now(sweden_tz)
+    
+    # Check if weekday (0=Monday, 6=Sunday)
+    if now.weekday() >= 5:  # Saturday or Sunday
+        return False
+    
+    # Check if within 10 AM - 6 PM
+    office_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
+    office_end = now.replace(hour=18, minute=0, second=0, microsecond=0)
+    
+    return office_start <= now <= office_end
+
+
+async def translate_admin_message(user_message: str, english_template: str, admin_name: str = None, is_social_media: bool = False) -> str:
+    """
+    Use LLM to translate admin handler messages to user's language
+    
+    Args:
+        user_message: The original message from the user (to detect language)
+        english_template: The English message template
+        admin_name: Admin name to include if applicable
+        is_social_media: Whether to append website URL
+    
+    Returns:
+        Translated message in user's language
+    """
+    try:
+        llm = ChatGroq(
+            model=settings.GROQ_MODEL,
+            temperature=0.1,  # Low temperature for consistent translation
+            max_tokens=300,
+            api_key=settings.GROQ_API_KEY
+        )
+        
+        # Build translation prompt
+        website_instruction = ""
+        if is_social_media:
+            website_instruction = "\n\nIMPORTANT: Also add at the end on a new line: '🌐 [Translate: Visit our website for more information / to submit your application]: https://swedenrelocators.se'"
+        
+        admin_instruction = ""
+        if admin_name:
+            admin_instruction = f"\n\nNote: Include admin name '{admin_name}' in the translation."
+        
+        prompt = f"""Translate this message to match the user's language. Be natural, warm, and professional like a customer support agent.
+
+User's message (detect language from this): "{user_message}"
+
+Message to translate: "{english_template}"{admin_instruction}
+
+IMPORTANT: After the main message, add a helpful follow-up question naturally in their language, such as:
+- "Is there anything else I can help you with?"
+- "Do you have any other questions?"
+- Or any similar supportive question that fits the context.{website_instruction}
+
+Respond ONLY with the translated message, nothing else."""
+        
+        result = await llm.ainvoke([HumanMessage(content=prompt)])
+        translated = result.content.strip()
+        
+        logger.info(f"Translated admin message to user's language")
+        return translated
+        
+    except Exception as e:
+        logger.error(f"Translation failed, using English: {str(e)}")
+        # Fallback to English
+        msg = english_template + "\n\nIs there anything else I can help you with?"
+        if is_social_media:
+            msg += "\n\n---\n🌐 Visit our website for more information: https://swedenrelocators.se"
+        return msg
 
 
 async def admin_handler_node(state: AgentState) -> AgentState:
@@ -43,24 +124,19 @@ async def admin_handler_node(state: AgentState) -> AgentState:
             state["assigned_admin_name"] = admin["admin_name"]
             state["queue_status"] = "assigned"
             
-            # Update AI response to inform user
-            lang = state.get("detected_language", "English")
+            # Translate message to user's language using LLM
+            channel = state.get("channel", "").lower()
+            social_media_channels = ["instagram", "facebook", "whatsapp", "twitter", "linkedin", "tiktok"]
+            is_social_media = any(social in channel for social in social_media_channels)
             
-            if lang == "Swedish":
-                state["ai_response"] = (
-                    f"Din förfrågan har vidarebefordrats till {admin['admin_name']}. "
-                    f"De kommer att hjälpa dig inom kort. Uppskattad väntetid: 2-5 minuter."
-                )
-            elif lang == "Spanish":
-                state["ai_response"] = (
-                    f"Tu consulta ha sido asignada a {admin['admin_name']}. "
-                    f"Te asistirán en breve. Tiempo estimado: 2-5 minutos."
-                )
-            else:  # English or others
-                state["ai_response"] = (
-                    f"Your query has been forwarded to {admin['admin_name']}. "
-                    f"They will assist you shortly. Estimated wait time: 2-5 minutes."
-                )
+            english_msg = f"Your query has been forwarded to {admin['admin_name']}. They will assist you shortly. Estimated wait time: 2-5 minutes."
+            
+            state["ai_response"] = await translate_admin_message(
+                user_message=state["message"],
+                english_template=english_msg,
+                admin_name=admin['admin_name'],
+                is_social_media=is_social_media
+            )
             
             logger.info(
                 f"User {state['user_id']} assigned to admin {admin['admin_name']}"
@@ -69,25 +145,25 @@ async def admin_handler_node(state: AgentState) -> AgentState:
             # No admin available
             state["queue_status"] = "pending"
             
-            lang = state.get("detected_language", "English")
+            channel = state.get("channel", "").lower()
+            social_media_channels = ["instagram", "facebook", "whatsapp", "twitter", "linkedin", "tiktok"]
+            is_social_media = any(social in channel for social in social_media_channels)
+            within_hours = is_within_office_hours()
             
-            if lang == "Swedish":
-                state["ai_response"] = (
-                    "Alla våra representanter är upptagna just nu. "
-                    "Din förfrågan har placerats i kön och någon kommer att hjälpa dig snart."
-                )
-            elif lang == "Spanish":
-                state["ai_response"] = (
-                    "Todos nuestros representantes están ocupados. "
-                    "Tu consulta está en cola y alguien te ayudará pronto."
-                )
+            if within_hours:
+                # During office hours - show estimated time
+                english_msg = "All our representatives are currently busy. Your query has been queued and someone will assist you soon. Estimated wait time: 2-5 minutes."
             else:
-                state["ai_response"] = (
-                    "All our representatives are currently busy. "
-                    "Your query has been queued and someone will assist you soon."
-                )
+                # Outside office hours - no time estimate
+                english_msg = "Your query has been forwarded to our team. We will respond during our office hours (Monday-Friday, 10:00 AM - 6:00 PM Swedish time)."
             
-            logger.warning(f"No admin available for user {state['user_id']}")
+            state["ai_response"] = await translate_admin_message(
+                user_message=state["message"],
+                english_template=english_msg,
+                is_social_media=is_social_media
+            )
+            
+            logger.warning(f"No admin available for user {state['user_id']} (office_hours={within_hours})")
         
     except Exception as e:
         logger.error(f"Error in admin handler: {str(e)}")

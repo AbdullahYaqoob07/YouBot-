@@ -60,6 +60,7 @@ Classification Rules:
 1. user_wants_human = true if user explicitly requests human/admin/agent/support/representative
 
 2. is_genuine_relocation_question = true if asking about visa, relocation, immigration, housing, jobs, Sweden
+   - FALSE if question is completely off-topic (cooking, sports, entertainment, unrelated topics)
 
 3. ai_lacks_knowledge = true if the AI response indicates ANY of these (in ANY language):
    - Says it doesn't have information
@@ -68,8 +69,12 @@ Classification Rules:
    - Apologizes for not being able to help with the specific request
    - Suggests contacting someone else for help
    - The question is NOT about Sweden relocation (off-topic)
+   - AI provided information unrelated to relocation services
    
-   IMPORTANT: Set ai_lacks_knowledge=true if the AI's response sounds like it's deflecting or can't fully answer.
+   IMPORTANT: Set ai_lacks_knowledge=true if:
+   - The AI's response sounds like it's deflecting or can't fully answer
+   - The question is about cooking, food, sports, entertainment, or other non-relocation topics
+   - The AI answered an off-topic question instead of redirecting to relocation
 
 IMPORTANT: If ai_lacks_knowledge=true OR user_wants_human=true → this conversation needs human admin"""),
         ("human", """User Message: {user_message}

@@ -461,6 +461,73 @@ All endpoints should use standard HTTP methods and return JSON responses.
 
 ---
 
+### 4.8 Update KB Entry
+**Endpoint:** `PUT /kb-curation/update-kb/{question_id}`
+
+**Purpose:** Update existing KB entry (question text, answer text, or category)
+
+**Request Body:**
+```json
+{
+  "admin_id": "string",
+  "question": "string (optional)",
+  "answer": "string (optional)",
+  "category": "string (optional)"
+}
+```
+
+**Notes:**
+- At least one field (question, answer, or category) must be provided
+- If question text changes, system will regenerate embeddings automatically
+- Supports partial updates (only update fields provided)
+- Automatically invalidates cache for old and new question text
+
+**Response:**
+```json
+{
+  "success": true,
+  "faq_id": "string",
+  "message": "Successfully updated KB entry (question, answer, category)",
+  "updated_fields": ["question", "answer", "category"]
+}
+```
+
+---
+
+### 4.9 Manually Add KB Entry
+**Endpoint:** `POST /kb-curation/manual-add`
+
+**Purpose:** Manually add new Q&A directly to KB without going through admin response queue
+
+**Request Body:**
+```json
+{
+  "admin_id": "string",
+  "question": "string",
+  "answer": "string",
+  "category": "string (optional, default: general)",
+  "language": "string (optional, default: English)"
+}
+```
+
+**Notes:**
+- Creates new KB entry directly without requiring user question first
+- Useful for proactively adding FAQs
+- Automatically generates embeddings and adds to Pinecone
+- Sets status as "manually_added" in database
+
+**Response:**
+```json
+{
+  "success": true,
+  "faq_id": "string",
+  "question_id": "number",
+  "message": "Successfully added to knowledge base"
+}
+```
+
+---
+
 ## 5. Analytics APIs
 
 ### 5.1 Log FAQ Query
@@ -669,7 +736,7 @@ X-Admin-Key: <admin_api_key>
 4. User Management (6.1, 6.2)
 
 ### Phase 2 (Important - Required for KB curation):
-1. KB Curation APIs (4.1 - 4.7)
+1. KB Curation APIs (4.1 - 4.9) - **Updated: Now includes KB edit (4.8) and manual add (4.9)**
 2. Analytics APIs (5.1, 5.3)
 
 ### Phase 3 (Nice to have):
@@ -681,6 +748,11 @@ X-Admin-Key: <admin_api_key>
 ## Notes for Backend Team
 
 1. **Database Schema:** The backend should maintain its own database schema that supports these API operations
+   - **KB Curation Table Updates**: The `kb_unanswered_questions` table must support:
+     - `status` field with new value: `"manually_added"` (in addition to existing: pending, reviewed, approved, rejected, added_to_kb, removed_from_kb)
+     - `responded_by_admin` VARCHAR(255) field for tracking who responded
+     - All existing fields: `user_question`, `admin_response`, `category`, `user_language`, `added_to_kb`, `kb_document_id`, `added_to_kb_at`, `added_by_admin`, `updated_at`
+   
 2. **Async Operations:** Some operations (like adding to KB) might take time - consider async processing
 3. **Pagination:** Implement consistent pagination across all list endpoints
 4. **Caching:** Consider caching frequently accessed data (user profiles, admin availability)

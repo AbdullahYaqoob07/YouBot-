@@ -183,7 +183,7 @@ class MessageRequest(BaseModel):
     message: str = Field(..., description="User message", min_length=1, max_length=5000)
     userId: str = Field(..., alias="userId", description="Unique user identifier", min_length=1, max_length=100)
     sessionId: Optional[str] = Field(None, alias="sessionId", description="Session ID (auto-generated if not provided)")
-    channel: str = Field(default="webhook", description="Channel: whatsapp, instagram, email, webhook")
+    channel: str = Field(default="webhook", description="Channel: whatsapp, facebook, instagram, email, webhook")
     userName: Optional[str] = Field(None, alias="userName", description="User name", max_length=200)
     userEmail: Optional[str] = Field(None, alias="userEmail", description="User email", max_length=200)
     userPhone: Optional[str] = Field(None, alias="userPhone", description="User phone", max_length=50)
@@ -198,7 +198,7 @@ class MessageRequest(BaseModel):
     @classmethod
     def validate_channel(cls, v: str) -> str:
         """Validate channel is allowed"""
-        allowed = ['whatsapp', 'instagram', 'email', 'webhook', 'web']
+        allowed = ['whatsapp', 'facebook','instagram', 'email', 'webhook', 'web']
         if v.lower() not in allowed:
             raise ValueError(f'Channel must be one of: {allowed}')
         return v.lower()
@@ -948,6 +948,23 @@ class RemoveFromKBRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class UpdateKBRequest(BaseModel):
+    """Request to update KB entry"""
+    admin_id: str
+    question: Optional[str] = None
+    answer: Optional[str] = None
+    category: Optional[str] = None
+
+
+class ManualAddKBRequest(BaseModel):
+    """Request to manually add Q&A to KB"""
+    admin_id: str
+    question: str
+    answer: str
+    category: Optional[str] = "general"
+    language: Optional[str] = "English"
+
+
 @app.post("/kb-curation/log-unanswered")
 async def log_unanswered_question_endpoint(
     request: LogUnansweredRequest,
@@ -1244,6 +1261,267 @@ async def remove_from_kb(
         error_msg = repr(e)
         logger.error(f"Error removing from KB: {error_msg}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to remove from KB: {str(e)}")
+
+
+@app.put("/kb-curation/update-kb/{question_id}")
+async def update_kb(
+    question_id: int,
+    request: UpdateKBRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Update an existing Q&A in Pinecone knowledge base
+    
+    Can update question text, answer text, and/or category.
+    Re-generates embeddings if question text is changed.
+    """
+    try:
+        from database.kb_curation import KBUnansweredQuestion
+        from database.models import get_async_session
+        from tools.knowledge_base import get_cached_vector_store, get_cached_embeddings
+        
+        # Validate at least one field is being updated
+        if not any([request.question, request.answer, request.category]):
+            raise HTTPException(status_code=400, detail="At least one field (question, answer, or category) must be provided")
+        
+        # Get question record
+        async with get_async_session() as session:
+            query = select(KBUnansweredQuestion).where(
+                KBUnansweredQuestion.id == question_id
+            )
+            result = await session.execute(query)
+            question = result.scalar_one_or_none()
+            
+            if not question:
+                raise HTTPException(status_code=404, detail="Question not found")
+            
+            if not question.added_to_kb or not question.kb_document_id:
+                raise HTTPException(status_code=400, detail="Question not in KB")
+            
+            faq_id = question.kb_document_id
+            
+            # Get cached embeddings and vector store
+            embeddings = get_cached_embeddings()
+            vector_store = get_cached_vector_store()
+            
+            if embeddings is None or vector_store is None:
+                raise HTTPException(status_code=500, detail="Embeddings or vector store not initialized")
+            
+            # Update database record
+            updated_fields = []
+            if request.question:
+                question.user_question = request.question
+                updated_fields.append("question")
+            if request.answer:
+                question.admin_response = request.answer
+                updated_fields.append("answer")
+            if request.category:
+                question.category = request.category
+                updated_fields.append("category")
+            
+            question.updated_at = datetime.utcnow()
+            await session.commit()
+            
+            # Get updated values for Pinecone
+            updated_question = request.question or question.user_question
+            updated_answer = request.answer or question.admin_response
+            updated_category = request.category or question.category or "general"
+            
+            # Re-generate embedding if question text changed
+            if request.question:
+                question_embedding = embeddings.embed_query(updated_question)
+            else:
+                # Fetch existing embedding from Pinecone
+                index = vector_store.index
+                fetch_result = index.fetch(ids=[faq_id], namespace="sweden_relocators_v3")
+                if faq_id not in fetch_result.get("vectors", {}):
+                    raise HTTPException(status_code=404, detail="Vector not found in Pinecone")
+                question_embedding = fetch_result["vectors"][faq_id]["values"]
+            
+            # Prepare updated metadata
+            metadata = {
+                "faq_id": faq_id,
+                "question": updated_question,
+                "answer": updated_answer,
+                "category": updated_category,
+                "source": "admin_curated",
+                "type": "faq",
+                "document_id": faq_id,
+                "ingested_at": question.added_to_kb_at.isoformat() if question.added_to_kb_at else datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+                "updated_by": request.admin_id,
+                "admin_id": request.admin_id,
+                "question_id": str(question_id)
+            }
+            
+            # Remove None values
+            metadata = {k: v for k, v in metadata.items() if v is not None}
+            
+            # Update in Pinecone (upsert with same ID)
+            index = vector_store.index
+            index.upsert(
+                vectors=[{
+                    "id": faq_id,
+                    "values": question_embedding,
+                    "metadata": metadata
+                }],
+                namespace="sweden_relocators_v3"
+            )
+            
+            # Invalidate cache for both old and new questions
+            faq_cache.invalidate_query(question.user_question, question.user_language or "English")
+            if request.question and request.question != question.user_question:
+                faq_cache.invalidate_query(request.question, question.user_language or "English")
+            
+            # Also invalidate Redis cache if available
+            global redis_cache
+            if redis_cache:
+                try:
+                    await redis_cache.delete(question.user_question, question.user_language or "English")
+                    if request.question:
+                        await redis_cache.delete(request.question, question.user_language or "English")
+                except Exception as e:
+                    logger.warning(f"Failed to invalidate Redis cache: {e}")
+        
+        logger.info(f"Updated KB entry {question_id} (FAQ ID: {faq_id}) - fields: {', '.join(updated_fields)}")
+        return {
+            "success": True,
+            "faq_id": faq_id,
+            "message": f"Successfully updated KB entry ({', '.join(updated_fields)})",
+            "updated_fields": updated_fields
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = repr(e)
+        logger.error(f"Error updating KB: {error_msg}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update KB: {str(e)}")
+
+
+@app.post("/kb-curation/manual-add")
+async def manual_add_to_kb(
+    request: ManualAddKBRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Manually add a Q&A directly to the knowledge base without going through the queue.
+    Creates a new KB entry and ingests it into Pinecone.
+    """
+    try:
+        from database.kb_curation import KBUnansweredQuestion
+        from database.models import get_async_session
+        from tools.knowledge_base import get_cached_embeddings, get_cached_vector_store
+        from pinecone import Pinecone
+        
+        # Validate inputs
+        if not request.question.strip() or not request.answer.strip():
+            raise HTTPException(status_code=400, detail="Question and answer cannot be empty")
+        
+        # Get cached embeddings and vector store
+        embeddings = get_cached_embeddings()
+        vector_store = get_cached_vector_store()
+        
+        if embeddings is None or vector_store is None:
+            raise HTTPException(status_code=500, detail="Embeddings or vector store not initialized")
+        
+        # Create database record
+        async with get_async_session() as session:
+            # Create new KB entry
+            new_entry = KBUnansweredQuestion(
+                user_question=request.question.strip(),
+                admin_response=request.answer.strip(),
+                user_language=request.language or "English",
+                category=request.category or "general",
+                status="manually_added",
+                added_to_kb=True,
+                added_by_admin=request.admin_id,
+                added_to_kb_at=datetime.utcnow(),
+                responded_by_admin=request.admin_id,
+                responded_at=datetime.utcnow(),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            
+            session.add(new_entry)
+            await session.commit()
+            await session.refresh(new_entry)
+            
+            question_id = new_entry.id
+        
+        # Generate FAQ ID
+        faq_id = f"faq_manual_{question_id}_{int(datetime.utcnow().timestamp())}"
+        
+        # Create embedding for the question
+        question_embedding = embeddings.embed_query(request.question)
+        
+        # Prepare metadata
+        metadata = {
+            "faq_id": faq_id,
+            "question": request.question.strip(),
+            "answer": request.answer.strip(),
+            "category": request.category or "general",
+            "source": "manual_entry",
+            "type": "faq",
+            "document_id": faq_id,
+            "ingested_at": datetime.utcnow().isoformat(),
+            "added_by": request.admin_id,
+            "admin_id": request.admin_id,
+            "question_id": str(question_id),
+            "language": request.language or "English"
+        }
+        
+        # Remove None values
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+        
+        # Insert into Pinecone
+        index = vector_store.index
+        index.upsert(
+            vectors=[{
+                "id": faq_id,
+                "values": question_embedding,
+                "metadata": metadata
+            }],
+            namespace="sweden_relocators_v3"
+        )
+        
+        # Update database with FAQ ID
+        async with get_async_session() as session:
+            query = select(KBUnansweredQuestion).where(
+                KBUnansweredQuestion.id == question_id
+            )
+            result = await session.execute(query)
+            entry = result.scalar_one_or_none()
+            
+            if entry:
+                entry.kb_document_id = faq_id
+                await session.commit()
+        
+        # Invalidate cache
+        faq_cache.invalidate_query(request.question, request.language or "English")
+        
+        # Also invalidate Redis cache if available
+        global redis_cache
+        if redis_cache:
+            try:
+                await redis_cache.delete(request.question, request.language or "English")
+            except Exception as e:
+                logger.warning(f"Failed to invalidate Redis cache: {e}")
+        
+        logger.info(f"Manually added KB entry {question_id} (FAQ ID: {faq_id}) by {request.admin_id}")
+        return {
+            "success": True,
+            "faq_id": faq_id,
+            "question_id": question_id,
+            "message": "Successfully added to knowledge base"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = repr(e)
+        logger.error(f"Error manually adding to KB: {error_msg}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to add to KB: {str(e)}")
 
 
 @app.get("/kb-curation/items")
