@@ -54,7 +54,7 @@ This system enables **continuous improvement** of the knowledge base by capturin
 │ Reads question and admin's previous response                │
 └──────────────────────────────────────────────────────────────┘
                            │
-                           ▼
+                           
 ┌──────────────────────────────────────────────────────────────┐
 │ STEP 4: Admin Approves                                      │
 │ Admin clicks "Approve" button                                │
