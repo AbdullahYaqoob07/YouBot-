@@ -103,3 +103,89 @@ Do not include any extra explanation outside the JSON.
     fallback = re.sub(r"```[\s\S]*?```", "", fallback)
     fallback = fallback.replace('`', '')
     return {"corrected": fallback, "suggestions": "", "raw": raw}
+
+
+ACTION_PROMPTS = {
+    "shorten": "Make the following message shorter and more concise while keeping the core meaning. Return only the shortened message.",
+    "extend": "Expand the following message with more helpful detail and context. Return only the expanded message.",
+    "summarize": "Write a brief, clear summary of the following message in 1-2 sentences. Return only the summary.",
+    "rephrase": "Rephrase the following message to improve clarity and flow while keeping the same meaning. Return only the rephrased message.",
+    "formal": "Rewrite the following message in a professional and formal tone suitable for customer support. Return only the rewritten message.",
+    "friendly": "Rewrite the following message in a warm, friendly, and approachable tone while staying professional. Return only the rewritten message.",
+    "bullets": "Convert the following message into a clear, easy-to-read bullet point list. Return only the bullet points.",
+    "grammar": "Fix any grammar, spelling, and punctuation errors in the following message. Return only the corrected message.",
+}
+
+
+async def enhance_message(message: str, action: str) -> dict:
+    """Apply an AI enhancement action to a message.
+
+    Supported actions: shorten, extend, summarize, rephrase, formal, friendly, bullets, grammar.
+    Returns a dict with `enhanced` (the transformed text) key.
+    """
+    if not settings.GROQ_API_KEY or not settings.GROQ_MODEL:
+        raise RuntimeError("LLM not configured (GROQ_API_KEY / GROQ_MODEL missing)")
+
+    instruction = ACTION_PROMPTS.get(action)
+    if not instruction:
+        raise ValueError(f"Unknown enhance action: {action}")
+
+    prompt = f"""{instruction}
+
+Message:
+{message}
+
+Respond with only the transformed text, no extra explanation."""
+
+    raw = await _call_llm_sync(prompt)
+
+    import re
+    enhanced = raw.strip()
+    enhanced = re.sub(r"```[\s\S]*?```", "", enhanced)
+    enhanced = enhanced.replace('`', '').strip()
+
+    return {"enhanced": enhanced, "action": action, "original": message}
+
+
+async def translate_to_english(text: str, source_language: str) -> str:
+    """Translate text from any language to English.
+
+    Returns the original text unchanged if source is already English or text is empty.
+    """
+    if not text or not text.strip():
+        return text
+    if source_language.lower() in ("english", "en"):
+        return text
+    if not settings.GROQ_API_KEY or not settings.GROQ_MODEL:
+        raise RuntimeError("LLM not configured (GROQ_API_KEY / GROQ_MODEL missing)")
+
+    prompt = f"""Translate the following {source_language} text to English.
+Return ONLY the translated text with no extra explanation or formatting.
+
+Text:
+{text}"""
+
+    raw = await _call_llm_sync(prompt)
+    return raw.strip()
+
+
+async def translate_from_english(text: str, target_language: str) -> str:
+    """Translate English text to the target language.
+
+    Returns the original text unchanged if target is English or text is empty.
+    """
+    if not text or not text.strip():
+        return text
+    if target_language.lower() in ("english", "en"):
+        return text
+    if not settings.GROQ_API_KEY or not settings.GROQ_MODEL:
+        raise RuntimeError("LLM not configured (GROQ_API_KEY / GROQ_MODEL missing)")
+
+    prompt = f"""Translate the following English text to {target_language}.
+Return ONLY the translated text with no extra explanation or formatting.
+
+Text:
+{text}"""
+
+    raw = await _call_llm_sync(prompt)
+    return raw.strip()

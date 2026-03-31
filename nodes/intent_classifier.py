@@ -59,8 +59,8 @@ Respond ONLY with valid JSON matching this schema:
 Classification Rules:
 1. user_wants_human = true if user explicitly requests human/admin/agent/support/representative
 
-2. is_genuine_relocation_question = true if asking about visa, relocation, immigration, housing, jobs, Sweden
-   - FALSE if question is completely off-topic (cooking, sports, entertainment, unrelated topics)
+2. is_genuine_relocation_question = true if asking about visa, relocation, immigration, housing, jobs, Sweden OR if the AI gave a proper factual answer from its knowledge base (KB answered the question regardless of topic)
+   - FALSE only if question is completely off-topic AND the AI had no KB results to draw from
 
 3. ai_lacks_knowledge = true if the AI response indicates ANY of these (in ANY language):
    - Says it doesn't have information
@@ -68,13 +68,13 @@ Classification Rules:
    - Admits the topic is outside its knowledge
    - Apologizes for not being able to help with the specific request
    - Suggests contacting someone else for help
-   - The question is NOT about Sweden relocation (off-topic)
-   - AI provided information unrelated to relocation services
    
-   IMPORTANT: Set ai_lacks_knowledge=true if:
+   IMPORTANT: Set ai_lacks_knowledge=FALSE if:
+   - The AI gave a clear, factual, direct answer (even on a non-Sweden topic)
+   - The AI used knowledge base results to answer the question
+   Set ai_lacks_knowledge=TRUE if:
+   - The AI deflected, redirected, or said it can only help with Sweden topics
    - The AI's response sounds like it's deflecting or can't fully answer
-   - The question is about cooking, food, sports, entertainment, or other non-relocation topics
-   - The AI answered an off-topic question instead of redirecting to relocation
 
 IMPORTANT: If ai_lacks_knowledge=true OR user_wants_human=true → this conversation needs human admin"""),
         ("human", """User Message: {user_message}

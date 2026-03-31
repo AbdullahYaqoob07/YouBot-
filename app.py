@@ -1,7 +1,7 @@
 """
 FastAPI application - REST API server (replaces n8n webhook)
 """
-from fastapi import FastAPI, HTTPException, Request, Header, BackgroundTasks, Depends, Security
+from fastapi import FastAPI, HTTPException, Request, Header, BackgroundTasks, Depends, Security, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +11,8 @@ from typing import Optional
 import time
 import asyncio
 import re
+import csv
+import io
 from datetime import datetime
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -699,6 +701,7 @@ async def clear_faq_cache(admin_key: str = Depends(verify_admin_key)):
 from database.supervision import (
     get_active_conversations,
     get_conversation_messages,
+    get_conversation_messages_for_admin,
     admin_takeover,
     admin_send_message,
     release_conversation
@@ -721,6 +724,13 @@ class AdminPreviewRequest(BaseModel):
     """Request for admin to preview/grammar-check message before sending"""
     admin_id: str = Field(..., min_length=1, description="Admin ID requesting preview")
     message: str = Field(..., min_length=1, max_length=2000, description="Message to preview")
+
+
+class AdminEnhanceRequest(BaseModel):
+    """Request for AI text enhancement actions on admin message"""
+    admin_id: str = Field(..., min_length=1, description="Admin ID requesting enhancement")
+    message: str = Field(..., min_length=1, max_length=2000, description="Message to enhance")
+    action: str = Field(..., description="Enhancement action: shorten|extend|summarize|rephrase|formal|friendly|bullets|grammar")
 
 
 class ReleaseConversationRequest(BaseModel):
@@ -768,7 +778,7 @@ async def get_conversation_detail(
     Includes all user messages, AI responses, and admin messages.
     """
     try:
-        conversation = await get_conversation_messages(session_id)
+        conversation = await get_conversation_messages_for_admin(session_id)
         
         if not conversation.get("messages") and conversation.get("error"):
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -880,6 +890,31 @@ async def preview_admin_message(
         raise HTTPException(status_code=500, detail="Failed to run preview")
 
 
+@app.post("/admin/supervision/conversations/{session_id}/message/enhance")
+async def enhance_admin_message(
+    session_id: str,
+    request: AdminEnhanceRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Apply an AI enhancement action to an admin's draft message.
+
+    Actions: shorten, extend, summarize, rephrase, formal, friendly, bullets, grammar
+    """
+    VALID_ACTIONS = {"shorten", "extend", "summarize", "rephrase", "formal", "friendly", "bullets", "grammar"}
+    if request.action not in VALID_ACTIONS:
+        raise HTTPException(status_code=400, detail=f"Invalid action. Must be one of: {', '.join(sorted(VALID_ACTIONS))}")
+
+    try:
+        from nodes.comprehension_agent import enhance_message
+        result = await enhance_message(request.message, request.action)
+        return {"status": "success", **result}
+    except RuntimeError as re:
+        raise HTTPException(status_code=503, detail=str(re))
+    except Exception as e:
+        logger.error(f"Error in enhance_admin_message: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to enhance message")
+
+
 @app.post("/admin/supervision/conversations/{session_id}/release")
 async def release_admin_conversation(
     session_id: str,
@@ -910,6 +945,240 @@ async def release_admin_conversation(
     except Exception as e:
         logger.error(f"Error releasing conversation: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to release conversation")
+
+
+# ============================================================================
+# SUPER ADMIN ENDPOINTS
+# ============================================================================
+
+class SuperAdminTakeoverRequest(BaseModel):
+    """Request for super admin to take over conversation"""
+    super_admin_id: str
+    reason: Optional[str] = "Super admin intervention"
+
+
+class SuperAdminReleaseRequest(BaseModel):
+    """Request for super admin to release conversation"""
+    super_admin_id: str
+    return_to_previous: Optional[bool] = True
+
+
+@app.get("/super-admin/verify/{admin_id}")
+async def verify_super_admin_role(
+    admin_id: str,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Verify if admin has super_admin role
+    """
+    try:
+        from database.super_admin import verify_super_admin
+        
+        is_super_admin = await verify_super_admin(admin_id)
+        
+        return {
+            "admin_id": admin_id,
+            "is_super_admin": is_super_admin
+        }
+        
+    except Exception as e:
+        logger.error(f"Error verifying super admin: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to verify super admin")
+
+
+@app.get("/super-admin/dashboard/stats")
+async def get_super_admin_stats(
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Get all admin statistics for super admin dashboard
+    
+    Returns workload, queries handled, resolution times for all admins
+    """
+    try:
+        from database.super_admin import get_all_admin_stats
+        
+        stats = await get_all_admin_stats()
+        
+        return {
+            "admins": stats,
+            "total_admins": len(stats),
+            "online_admins": sum(1 for a in stats if a["status"] == "online"),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting super admin stats: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get admin stats")
+
+
+@app.get("/super-admin/conversations/monitor")
+async def monitor_all_conversations(
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Monitor all active conversations across all admins
+    
+    Super admin can see all conversations in real-time
+    """
+    try:
+        from database.super_admin import get_all_conversations_monitor
+        
+        conversations = await get_all_conversations_monitor()
+        
+        return {
+            "conversations": conversations,
+            "total_conversations": len(conversations),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error monitoring conversations: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to monitor conversations")
+
+
+@app.get("/super-admin/query-distribution")
+async def get_query_distribution_stats(
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Get query distribution across all admins
+    
+    Shows how many queries each admin has handled (last 24 hours)
+    """
+    try:
+        from database.super_admin import get_query_distribution
+        
+        distribution = await get_query_distribution()
+        
+        return distribution
+        
+    except Exception as e:
+        logger.error(f"Error getting query distribution: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get query distribution")
+
+
+@app.post("/super-admin/takeover/{session_id}")
+async def super_admin_takeover_conversation(
+    session_id: str,
+    request: SuperAdminTakeoverRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Super admin takes over a conversation from current admin
+    
+    This allows super admin to intervene in any conversation
+    """
+    try:
+        from database.super_admin import verify_super_admin, super_admin_takeover
+        
+        # Verify super admin role
+        is_super_admin = await verify_super_admin(request.super_admin_id)
+        if not is_super_admin:
+            raise HTTPException(status_code=403, detail="Not authorized as super admin")
+        
+        result = await super_admin_takeover(
+            super_admin_id=request.super_admin_id,
+            session_id=session_id,
+            reason=request.reason or "Super admin intervention"
+        )
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("message"))
+        
+        logger.info(f"Super admin {request.super_admin_id} took over conversation {session_id}")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in super admin takeover: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to takeover conversation")
+
+
+@app.post("/super-admin/release/{session_id}")
+async def super_admin_release_conversation(
+    session_id: str,
+    request: SuperAdminReleaseRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Super admin releases a conversation back to previous admin or ends it
+    
+    If return_to_previous=True, conversation goes back to original admin
+    If return_to_previous=False, conversation is ended
+    """
+    try:
+        from database.super_admin import verify_super_admin, super_admin_release
+        
+        # Verify super admin role
+        is_super_admin = await verify_super_admin(request.super_admin_id)
+        if not is_super_admin:
+            raise HTTPException(status_code=403, detail="Not authorized as super admin")
+        
+        result = await super_admin_release(
+            super_admin_id=request.super_admin_id,
+            session_id=session_id,
+            return_to_previous=request.return_to_previous
+        )
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("message"))
+        
+        logger.info(f"Super admin {request.super_admin_id} released conversation {session_id}")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in super admin release: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to release conversation")
+
+
+class SuperAdminReassignRequest(BaseModel):
+    """Request for super admin to reassign a conversation to a different admin"""
+    super_admin_id: str
+    target_admin_id: str
+    reason: Optional[str] = "Super admin reassignment"
+
+
+@app.post("/super-admin/reassign/{session_id}")
+async def super_admin_reassign_conversation(
+    session_id: str,
+    request: SuperAdminReassignRequest,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Super admin manually reassigns a conversation to a specific admin.
+
+    Allows super admin to override automatic distribution and hand
+    a conversation directly to any available admin.
+    """
+    try:
+        from database.super_admin import verify_super_admin, reassign_conversation
+
+        is_super_admin = await verify_super_admin(request.super_admin_id)
+        if not is_super_admin:
+            raise HTTPException(status_code=403, detail="Not authorized as super admin")
+
+        result = await reassign_conversation(
+            super_admin_id=request.super_admin_id,
+            session_id=session_id,
+            target_admin_id=request.target_admin_id,
+            reason=request.reason or "Super admin reassignment"
+        )
+
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("message"))
+
+        logger.info(f"Super admin {request.super_admin_id} reassigned {session_id} to {request.target_admin_id}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in super admin reassign: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to reassign conversation")
 
 
 # ============================================================================
@@ -1524,23 +1793,164 @@ async def manual_add_to_kb(
         raise HTTPException(status_code=500, detail=f"Failed to add to KB: {str(e)}")
 
 
-@app.get("/kb-curation/items")
-async def get_kb_items(
-    status: Optional[str] = "added_to_kb",
-    limit: int = 100,
+@app.post("/kb-curation/csv-import")
+async def csv_import_to_kb(
+    admin_id: str,
+    file: UploadFile = File(...),
     admin_key: str = Depends(verify_admin_key)
 ):
     """
-    Get list of KB items (questions added to knowledge base)
+    Bulk-import Q&A pairs from a CSV file into the knowledge base.
+
+    Expected CSV columns (header row required):
+      question, answer, category (optional), language (optional)
+
+    Returns a summary of successes and failures.
+    """
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+
+    try:
+        from database.kb_curation import KBUnansweredQuestion
+        from database.models import get_async_session
+        from tools.knowledge_base import get_cached_embeddings, get_cached_vector_store
+
+        embeddings = get_cached_embeddings()
+        vector_store = get_cached_vector_store()
+        if embeddings is None or vector_store is None:
+            raise HTTPException(status_code=500, detail="Embeddings or vector store not initialized")
+
+        raw = await file.read()
+        try:
+            text_content = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text_content = raw.decode("latin-1")
+
+        reader = csv.DictReader(io.StringIO(text_content))
+
+        # Normalise header names (strip whitespace, lower-case)
+        reader.fieldnames = [f.strip().lower() for f in (reader.fieldnames or [])]
+
+        if "question" not in reader.fieldnames or "answer" not in reader.fieldnames:
+            raise HTTPException(
+                status_code=400,
+                detail="CSV must have 'question' and 'answer' columns (header row required)"
+            )
+
+        results = {"total": 0, "success": 0, "failed": 0, "errors": [], "added_ids": []}
+
+        for row in reader:
+            results["total"] += 1
+            question = (row.get("question") or "").strip()
+            answer   = (row.get("answer")   or "").strip()
+            category = (row.get("category") or "general").strip() or "general"
+            language = (row.get("language") or "English").strip() or "English"
+
+            if not question or not answer:
+                results["failed"] += 1
+                results["errors"].append(f"Row {results['total']}: empty question or answer")
+                continue
+
+            try:
+                # 1. DB record
+                async with get_async_session() as session:
+                    entry = KBUnansweredQuestion(
+                        user_question=question,
+                        admin_response=answer,
+                        user_language=language,
+                        category=category,
+                        status="manually_added",
+                        added_to_kb=True,
+                        added_by_admin=admin_id,
+                        added_to_kb_at=datetime.utcnow(),
+                        admin_responded_at=datetime.utcnow(),
+                        admin_id=admin_id,
+                        session_id="csv_import",
+                        user_id=admin_id,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    session.add(entry)
+                    await session.commit()
+                    await session.refresh(entry)
+                    question_id = entry.id
+
+                # 2. Pinecone upsert
+                faq_id = f"faq_csv_{question_id}_{int(datetime.utcnow().timestamp())}"
+                embedding = embeddings.embed_query(question)
+                metadata = {
+                    "faq_id": faq_id, "question": question, "answer": answer,
+                    "category": category, "source": "csv_import", "type": "faq",
+                    "document_id": faq_id, "ingested_at": datetime.utcnow().isoformat(),
+                    "admin_id": admin_id, "question_id": str(question_id), "language": language
+                }
+                vector_store.index.upsert(
+                    vectors=[{"id": faq_id, "values": embedding, "metadata": metadata}],
+                    namespace="sweden_relocators_v3"
+                )
+
+                # 3. Update DB with faq_id
+                async with get_async_session() as session:
+                    from sqlalchemy import select as sa_select
+                    res = await session.execute(sa_select(KBUnansweredQuestion).where(KBUnansweredQuestion.id == question_id))
+                    rec = res.scalar_one_or_none()
+                    if rec:
+                        rec.kb_document_id = faq_id
+                        await session.commit()
+
+                # 4. Cache invalidation
+                faq_cache.invalidate_query(question, language)
+                global redis_cache
+                if redis_cache:
+                    try:
+                        await redis_cache.delete(question, language)
+                    except Exception:
+                        pass
+
+                results["success"] += 1
+                results["added_ids"].append(question_id)
+
+            except Exception as row_err:
+                results["failed"] += 1
+                results["errors"].append(f"Row {results['total']} ('{question[:40]}'): {str(row_err)}")
+                logger.warning(f"CSV import row {results['total']} failed: {row_err}")
+
+        logger.info(f"CSV import by {admin_id}: {results['success']}/{results['total']} succeeded")
+        return {
+            "success": True,
+            "summary": results,
+            "message": f"Imported {results['success']} of {results['total']} rows successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"CSV import error: {repr(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"CSV import failed: {str(e)}")
+
+
+@app.get("/kb-curation/items")
+async def get_kb_items(
+    status: Optional[str] = None,
+    added_to_kb: bool = True,
+    limit: int = 200,
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Get list of KB items (questions added to knowledge base).
+    By default returns all entries where added_to_kb=True (regardless of status).
     """
     try:
         from database.kb_curation import KBUnansweredQuestion
         from database.models import get_async_session
         
         async with get_async_session() as session:
-            # Build query
             query = select(KBUnansweredQuestion)
             
+            # Filter by added_to_kb boolean (covers manual-add AND csv-import)
+            query = query.where(KBUnansweredQuestion.added_to_kb.is_(True))
+            
+            # Optionally also filter by status
             if status:
                 query = query.where(KBUnansweredQuestion.status == status)
             
@@ -1556,6 +1966,7 @@ async def get_kb_items(
                     "user_question": q.user_question,
                     "admin_response": q.admin_response,
                     "category": q.category,
+                    "user_language": q.user_language,
                     "kb_document_id": q.kb_document_id,
                     "added_to_kb_at": q.added_to_kb_at.isoformat() if q.added_to_kb_at else None,
                     "added_by_admin": q.added_by_admin,

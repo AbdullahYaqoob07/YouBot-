@@ -617,17 +617,179 @@ All endpoints should use standard HTTP methods and return JSON responses.
 
 ---
 
+## 6. Super Admin APIs
 
+### 6.1 Verify Super Admin
+**Endpoint:** `GET /super-admin/verify/{admin_id}`
 
+**Purpose:** Verify if admin has super_admin role
 
+**Response:**
+```json
+{
+  "admin_id": "string",
+  "is_super_admin": "boolean"
+}
+```
 
+---
 
+### 6.2 Get All Admin Statistics
+**Endpoint:** `GET /super-admin/dashboard/stats`
 
+**Purpose:** Get comprehensive statistics for all admins (workload, queries handled, resolution times)
 
+**Response:**
+```json
+{
+  "admins": [
+    {
+      "admin_id": "string",
+      "admin_name": "string",
+      "admin_email": "string",
+      "role": "admin|super_admin",
+      "status": "online|offline",
+      "current_queue_count": "number",
+      "max_queue_size": "number",
+      "total_queries_handled": "number",
+      "active_conversations": "number",
+      "assigned_queries": "number",
+      "pending_queries": "number",
+      "avg_resolution_time_minutes": "number",
+      "last_assigned_at": "ISO 8601 timestamp"
+    }
+  ],
+  "total_admins": "number",
+  "online_admins": "number",
+  "timestamp": "ISO 8601 timestamp"
+}
+```
 
+---
 
---
-**Endpoint:** `GET /users/{user_id}/profile`
+### 6.3 Monitor All Conversations
+**Endpoint:** `GET /super-admin/conversations/monitor`
+
+**Purpose:** Monitor all active conversations across all admins in real-time
+
+**Response:**
+```json
+{
+  "conversations": [
+    {
+      "id": "number",
+      "session_id": "string",
+      "user_id": "string",
+      "channel": "string",
+      "language": "string",
+      "status": "string",
+      "admin_id": "string",
+      "admin_name": "string",
+      "admin_role": "string",
+      "super_admin_id": "string (nullable)",
+      "super_admin_name": "string (nullable)",
+      "previous_admin_id": "string (nullable)",
+      "previous_admin_name": "string (nullable)",
+      "admin_takeover": "boolean",
+      "super_admin_takeover": "boolean",
+      "message_count": "number",
+      "last_message": "string",
+      "last_ai_response": "string",
+      "started_at": "ISO 8601 timestamp",
+      "last_activity": "ISO 8601 timestamp",
+      "takeover_at": "ISO 8601 timestamp (nullable)",
+      "super_admin_takeover_at": "ISO 8601 timestamp (nullable)",
+      "duration_minutes": "number"
+    }
+  ],
+  "total_conversations": "number",
+  "timestamp": "ISO 8601 timestamp"
+}
+```
+
+---
+
+### 6.4 Get Query Distribution
+**Endpoint:** `GET /super-admin/query-distribution`
+
+**Purpose:** Get query distribution statistics across all admins (last 24 hours)
+
+**Response:**
+```json
+{
+  "distribution": [
+    {
+      "admin_id": "string",
+      "admin_name": "string",
+      "role": "string",
+      "status": "string",
+      "total_queries": "number",
+      "active_queries": "number",
+      "resolved_queries": "number",
+      "avg_resolution_minutes": "number"
+    }
+  ],
+  "pending_queries": "number",
+  "total_online_admins": "number",
+  "timestamp": "ISO 8601 timestamp"
+}
+```
+
+---
+
+### 6.5 Super Admin Takeover
+**Endpoint:** `POST /super-admin/takeover/{session_id}`
+
+**Purpose:** Super admin takes over a conversation from current admin
+
+**Request Body:**
+```json
+{
+  "super_admin_id": "string",
+  "reason": "string (optional, default: Super admin intervention)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Takeover successful",
+  "previous_admin_id": "string",
+  "super_admin_id": "string"
+}
+```
+
+---
+
+### 6.6 Super Admin Release
+**Endpoint:** `POST /super-admin/release/{session_id}`
+
+**Purpose:** Super admin releases conversation back to previous admin or ends it
+
+**Request Body:**
+```json
+{
+  "super_admin_id": "string",
+  "return_to_previous": "boolean (optional, default: true)"
+}
+```
+
+**Notes:**
+- If `return_to_previous=true`: Conversation returns to original admin
+- If `return_to_previous=false`: Conversation is ended
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Conversation returned to {admin_id} | Conversation ended"
+}
+```
+
+---
+
+## 7. User Management APIs
 
 **Purpose:** Retrieve existing user information
 
@@ -739,7 +901,11 @@ X-Admin-Key: <admin_api_key>
 1. KB Curation APIs (4.1 - 4.9) - **Updated: Now includes KB edit (4.8) and manual add (4.9)**
 2. Analytics APIs (5.1, 5.3)
 
-### Phase 3 (Nice to have):
+### Phase 3 (Important - Required for super admin):
+1. Super Admin APIs (6.1 - 6.6) - **NEW: Monitor all admins, takeover conversations, query distribution**
+2. Database schema updates for super admin (see super_admin_schema.sql)
+
+### Phase 4 (Nice to have):
 1. FAQ Analytics (5.2)
 2. Webhook Notifications (9.1, 9.2)
 
@@ -752,6 +918,13 @@ X-Admin-Key: <admin_api_key>
      - `status` field with new value: `"manually_added"` (in addition to existing: pending, reviewed, approved, rejected, added_to_kb, removed_from_kb)
      - `responded_by_admin` VARCHAR(255) field for tracking who responded
      - All existing fields: `user_question`, `admin_response`, `category`, `user_language`, `added_to_kb`, `kb_document_id`, `added_to_kb_at`, `added_by_admin`, `updated_at`
+   
+   - **Super Admin Feature Updates** (see `super_admin_schema.sql`):
+     - Add `role` field to `admin_availability` table (values: 'admin', 'super_admin')
+     - Add super admin tracking fields to `active_conversations`: `super_admin_id`, `previous_admin_id`, `super_admin_takeover`, `super_admin_takeover_at`
+     - Add `is_super_admin` field to `admin_messages`
+     - Create `super_admin_audit_log` table for tracking super admin actions
+     - Create views: `v_super_admin_dashboard`, `v_all_conversations_monitor`
    
 2. **Async Operations:** Some operations (like adding to KB) might take time - consider async processing
 3. **Pagination:** Implement consistent pagination across all list endpoints

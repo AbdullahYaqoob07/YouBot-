@@ -40,6 +40,7 @@ class AdminAvailability(Base):
     admin_id = Column(String(255), primary_key=True)
     admin_name = Column(String(255), nullable=False)
     admin_email = Column(String(255), nullable=False)
+    role = Column(String(50), default="admin", index=True)  # 'admin' or 'super_admin'
     status = Column(String(50), nullable=False, default="offline", index=True)
     current_queue_count = Column(Integer, default=0)
     max_queue_size = Column(Integer, default=10)
@@ -114,6 +115,12 @@ class ActiveConversation(Base):
     takeover_reason = Column(Text, nullable=True)
     takeover_at = Column(DateTime, nullable=True)
     
+    # Super admin intervention (NEW)
+    super_admin_id = Column(String(255), ForeignKey("admin_availability.admin_id"), nullable=True)
+    previous_admin_id = Column(String(255), nullable=True)
+    super_admin_takeover = Column(Boolean, default=False)
+    super_admin_takeover_at = Column(DateTime, nullable=True)
+    
     # AI handoff (when AI triggers handoff)
     ai_triggered_handoff = Column(Boolean, default=False)
     handoff_reason = Column(Text, nullable=True)
@@ -140,6 +147,7 @@ class AdminMessage(Base):
     session_id = Column(String(255), nullable=False, index=True)
     admin_id = Column(String(255), ForeignKey("admin_availability.admin_id"), nullable=False)
     message = Column(Text, nullable=False)
+    is_super_admin = Column(Boolean, default=False)  # Track if message from super admin
     created_at = Column(DateTime, nullable=False)
 
 

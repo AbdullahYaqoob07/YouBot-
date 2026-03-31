@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin Dashboard - Sweden Relocators AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #ff6b00 0%, #ff0844 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 3px solid #ff0844;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(255, 8, 68, 0.3);
+        }
+        
+        .header h1 {
+            color: white;
+            font-size: 1.8rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header .badge {
+            background: rgba(255,255,255,0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        
+        .config-panel {
+            background: #16213e;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            border: 2px solid #ff6b00;
+        }
+        
+        .config-panel label {
+            color: #ff6b00;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+        
+        .config-panel input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 1rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 2px solid #ff6b00;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        .stat-card.critical {
+            border-color: #ff0844;
+            background: linear-gradient(135deg, #2d0a0f 0%, #1a0508 100%);
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #ff6b00;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-card.critical .stat-value {
+            color: #ff0844;
+        }
+        
+        .stat-label {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #0f3460;
+        }
+        
+        .tab {
+            padding: 1rem 2rem;
+            background: #16213e;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, #ff6b00 0%, #ff0844 100%);
+            color: white;
+            font-weight: bold;
+        }
+        
+        .tab:hover:not(.active) {
+            background: #0f3460;
+            color: #fff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .admin-table {
+            background: #16213e;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #ff6b00;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        thead {
+            background: linear-gradient(90deg, #ff6b00 0%, #ff0844 100%);
+            color: white;
+        }
+        
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #0f3460;
+        }
+        
+        th {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        tbody tr:hover {
+            background: #0f3460;
+        }
+        
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+        
+        .status-online {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .status-offline {
+            background: #666;
+            color: #fff;
+        }
+        
+        .role-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            background: #ff6b00;
+            color: white;
+        }
+        
+        .conversation-card {
+            background: #16213e;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            border: 2px solid #0f3460;
+            transition: all 0.3s;
+        }
+        
+        .conversation-card:hover {
+            border-color: #ff6b00;
+            transform: translateX(5px);
+        }
+        
+        .conversation-card.super-admin-taken {
+            border-color: #ff0844;
+            background: linear-gradient(135deg, #2d0a0f 0%, #16213e 100%);
+        }
+        
+        .conversation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .conversation-meta {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .meta-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            background: #0f3460;
+            color: #aaa;
+        }
+        
+        .conversation-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .btn-takeover {
+            background: linear-gradient(135deg, #ff6b00 0%, #ff0844 100%);
+            color: white;
+        }
+        
+        .btn-takeover:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(255, 107, 0, 0.5);
+        }
+        
+        .btn-release {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .btn-release:hover {
+            background: #00cc6f;
+        }
+        
+        .btn-view {
+            background: #0f3460;
+            color: #fff;
+        }
+        
+        .btn-view:hover {
+            background: #1a4a7a;
+        }
+        
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff6b00 0%, #ff0844 100%);
+            color: white;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(255, 107, 0, 0.5);
+            transition: transform 0.3s;
+        }
+        
+        .refresh-btn:hover {
+            transform: rotate(180deg);
+        }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            color: white;
+            animation: slideIn 0.3s;
+            z-index: 1000;
+        }
+        
+        .toast.success {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc6f 100%);
+            color: #000;
+        }
+        
+        .toast.error {
+            background: linear-gradient(135deg, #ff0844 0%, #cc0036 100%);
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #888;
+            font-size: 1.2rem;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #666;
+        }
+        
+        .chart-container {
+            background: #16213e;
+            padding: 2rem;
+            border-radius: 12px;
+            border: 2px solid #ff6b00;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔥 Super Admin Dashboard</h1>
+        <div class="badge">SUPER ADMIN ACCESS</div>
+    </div>
+    
+    <div class="container">
+        <div class="config-panel">
+            <div>
+                <label>Admin Key:</label>
+                <input type="password" id="admin-key" placeholder="Enter admin API key">
+            </div>
+            <div>
+                <label>Super Admin ID:</label>
+                <input type="text" id="super-admin-id" placeholder="Your super admin ID" value="super_admin_001">
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+                <button class="btn btn-takeover" onclick="verifyAccess()" style="width: 100%;">🔐 Verify Access</button>
+            </div>
+        </div>
+        
+        <div class="stats-grid" id="stats-grid">
+            <div class="loading">Loading statistics...</div>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('admins')">👥 Admin Overview</button>
+            <button class="tab" onclick="switchTab('conversations')">💬 Active Conversations</button>
+            <button class="tab" onclick="switchTab('distribution')">📊 Query Distribution</button>
+        </div>
+        
+        <div id="admins-tab" class="tab-content active">
+            <div class="admin-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Admin</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Queue</th>
+                            <th>Total Handled</th>
+                            <th>Active Convs</th>
+                            <th>Avg Resolution</th>
+                            <th>Last Assigned</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admins-tbody">
+                        <tr><td colspan="8" class="loading">Loading admin data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="conversations-tab" class="tab-content">
+            <div id="conversations-container">
+                <div class="loading">Loading conversations...</div>
+            </div>
+        </div>
+        
+        <div id="distribution-tab" class="tab-content">
+            <div class="chart-container">
+                <h2 style="color: #ff6b00; margin-bottom: 1.5rem;">📊 Query Distribution (Last 24 Hours)</h2>
+                <div id="distribution-container">
+                    <div class="loading">Loading distribution data...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <button class="refresh-btn" onclick="refreshAllData()">🔄</button>
+    
+    <script>
+        const API_BASE = window.location.origin;
+        let refreshInterval;
+        
+        function getAdminKey() {
+            return document.getElementById('admin-key').value;
+        }
+        
+        function getSuperAdminId() {
+            return document.getElementById('super-admin-id').value || 'super_admin_001';
+        }
+        
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 4000);
+        }
+        
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // Load data for the selected tab
+            if (tabName === 'admins') loadAdminStats();
+            if (tabName === 'conversations') loadConversations();
+            if (tabName === 'distribution') loadDistribution();
+        }
+        
+        async function verifyAccess() {
+            const superAdminId = getSuperAdminId();
+            
+            if (!getAdminKey()) {
+                showToast('❌ Please enter admin key', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/super-admin/verify/${superAdminId}`, {
+                    headers: { 'X-Admin-Key': getAdminKey() }
+                });
+                
+                const data = await response.json();
+                
+                if (data.is_super_admin) {
+                    showToast('✅ Super Admin access verified!', 'success');
+                    refreshAllData();
+                    startAutoRefresh();
+                } else {
+                    showToast('❌ Not authorized as super admin', 'error');
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function loadAdminStats() {
+            try {
+                const response = await fetch(`${API_BASE}/super-admin/dashboard/stats`, {
+                    headers: { 'X-Admin-Key': getAdminKey() }
+                });
+                
+                const data = await response.json();
+                
+                // Update stats cards
+                const statsGrid = document.getElementById('stats-grid');
+                statsGrid.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value">${data.total_admins}</div>
+                        <div class="stat-label">Total Admins</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${data.online_admins}</div>
+                        <div class="stat-label">Online Admins</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${data.admins.reduce((sum, a) => sum + a.active_conversations, 0)}</div>
+                        <div class="stat-label">Active Conversations</div>
+                    </div>
+                    <div class="stat-card critical">
+                        <div class="stat-value">${data.admins.reduce((sum, a) => sum + a.pending_queries, 0)}</div>
+                        <div class="stat-label">Pending Queries</div>
+                    </div>
+                `;
+                
+                // Update admin table
+                const tbody = document.getElementById('admins-tbody');
+                tbody.innerHTML = data.admins.map(admin => `
+                    <tr>
+                        <td>
+                            <strong>${admin.admin_name}</strong><br>
+                            <small style="color: #888;">${admin.admin_id}</small>
+                        </td>
+                        <td><span class="role-badge">${admin.role}</span></td>
+                        <td><span class="status-badge status-${admin.status}">${admin.status.toUpperCase()}</span></td>
+                        <td>${admin.current_queue_count} / ${admin.max_queue_size}</td>
+                        <td>${admin.total_queries_handled}</td>
+                        <td>${admin.active_conversations}</td>
+                        <td>${admin.avg_resolution_time_minutes.toFixed(1)} min</td>
+                        <td>${admin.last_assigned_at ? new Date(admin.last_assigned_at).toLocaleString() : 'Never'}</td>
+                    </tr>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading admin stats:', error);
+                showToast('❌ Failed to load admin stats', 'error');
+            }
+        }
+        
+        async function loadConversations() {
+            try {
+                const response = await fetch(`${API_BASE}/super-admin/conversations/monitor`, {
+                    headers: { 'X-Admin-Key': getAdminKey() }
+                });
+                
+                const data = await response.json();
+                
+                const container = document.getElementById('conversations-container');
+                
+                if (data.conversations.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No active conversations</div>';
+                    return;
+                }
+                
+                container.innerHTML = data.conversations.map(conv => `
+                    <div class="conversation-card ${conv.super_admin_takeover ? 'super-admin-taken' : ''}">
+                        <div class="conversation-header">
+                            <div>
+                                <strong>${conv.user_id}</strong> | ${conv.channel}
+                                ${conv.super_admin_takeover ? '<span class="role-badge">TAKEN BY SUPER ADMIN</span>' : ''}
+                            </div>
+                            <div class="conversation-meta">
+                                <span class="meta-badge">${conv.language}</span>
+                                <span class="meta-badge">${conv.message_count} messages</span>
+                                <span class="meta-badge">${conv.duration_minutes} min</span>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 1rem;">
+                            <strong>Current Handler:</strong> ${conv.admin_name || 'AI'} (${conv.admin_id || 'bot'})
+                            ${conv.previous_admin_name ? `<br><small>Previous: ${conv.previous_admin_name}</small>` : ''}
+                        </div>
+                        <div style="margin-bottom: 1rem; color: #888;">
+                            <strong>Last Message:</strong> ${conv.last_message ? conv.last_message.substring(0, 100) + '...' : 'N/A'}
+                        </div>
+                        <div class="conversation-actions">
+                            ${!conv.super_admin_takeover ? 
+                                `<button class="btn btn-takeover" onclick="takeoverConversation('${conv.session_id}')">🔥 Takeover</button>` :
+                                `<button class="btn btn-release" onclick="releaseConversation('${conv.session_id}', true)">↩️ Return to Admin</button>
+                                 <button class="btn btn-release" onclick="releaseConversation('${conv.session_id}', false)">✅ End Conversation</button>`
+                            }
+                            <button class="btn btn-view" onclick="viewConversationDetails('${conv.session_id}')">👁️ View Details</button>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+                showToast('❌ Failed to load conversations', 'error');
+            }
+        }
+        
+        async function loadDistribution() {
+            try {
+                const response = await fetch(`${API_BASE}/super-admin/query-distribution`, {
+                    headers: { 'X-Admin-Key': getAdminKey() }
+                });
+                
+                const data = await response.json();
+                
+                const container = document.getElementById('distribution-container');
+                container.innerHTML = `
+                    <div style="margin-bottom: 2rem;">
+                        <strong style="color: #ff6b00;">Pending Queries:</strong> ${data.pending_queries} | 
+                        <strong style="color: #ff6b00;">Online Admins:</strong> ${data.total_online_admins}
+                    </div>
+                    <table style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Admin</th>
+                                <th>Status</th>
+                                <th>Total Queries</th>
+                                <th>Active</th>
+                                <th>Resolved</th>
+                                <th>Avg Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.distribution.map(d => `
+                                <tr>
+                                    <td>${d.admin_name}</td>
+                                    <td><span class="status-badge status-${d.status}">${d.status}</span></td>
+                                    <td>${d.total_queries}</td>
+                                    <td>${d.active_queries}</td>
+                                    <td>${d.resolved_queries}</td>
+                                    <td>${d.avg_resolution_minutes.toFixed(1)} min</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                
+            } catch (error) {
+                console.error('Error loading distribution:', error);
+                showToast('❌ Failed to load distribution', 'error');
+            }
+        }
+        
+        async function takeoverConversation(sessionId) {
+            if (!confirm(`Take over conversation ${sessionId}?`)) return;
+            
+            const reason = prompt('Reason for takeover:', 'Super admin intervention');
+            if (!reason) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/super-admin/takeover/${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        super_admin_id: getSuperAdminId(),
+                        reason: reason
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('✅ Takeover successful!', 'success');
+                    loadConversations();
+                    loadAdminStats();
+                } else {
+                    showToast(`❌ ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function releaseConversation(sessionId, returnToPrevious) {
+            const action = returnToPrevious ? 'return to previous admin' : 'end conversation';
+            if (!confirm(`Are you sure you want to ${action}?`)) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/super-admin/release/${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        super_admin_id: getSuperAdminId(),
+                        return_to_previous: returnToPrevious
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`✅ ${data.message}`, 'success');
+                    loadConversations();
+                    loadAdminStats();
+                } else {
+                    showToast(`❌ ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function viewConversationDetails(sessionId) {
+            window.open(`/admin?session=${sessionId}`, '_blank');
+        }
+        
+        function refreshAllData() {
+            loadAdminStats();
+            const activeTab = document.querySelector('.tab.active').textContent.toLowerCase();
+            if (activeTab.includes('conversation')) loadConversations();
+            if (activeTab.includes('distribution')) loadDistribution();
+        }
+        
+        function startAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(refreshAllData, 10000); // Refresh every 10 seconds
+        }
+        
+        // Initial load
+        setTimeout(verifyAccess, 500);
+    </script>
+</body>
+</html>

@@ -81,11 +81,14 @@
             border-radius: 8px;
             margin-bottom: 2rem;
             display: flex;
-            gap: 1rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
         }
         
         .search-bar input {
             flex: 1;
+            min-width: 180px;
             padding: 0.75rem;
             border: 1px solid #0f3460;
             border-radius: 5px;
@@ -95,13 +98,14 @@
         }
         
         .search-bar button {
-            padding: 0.75rem 2rem;
+            padding: 0.65rem 1.1rem;
             background: #00d9ff;
             color: #1a1a2e;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             font-weight: 600;
+            white-space: nowrap;
         }
         
         .search-bar button:hover {
@@ -345,7 +349,80 @@
             background: #1a4a7a;
             color: #eee;
         }
-        
+
+        /* CSV Import Modal */
+        .csv-modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1001; align-items: center; justify-content: center;
+        }
+        .csv-modal.active { display: flex; }
+        .csv-modal-content {
+            background: #16213e;
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 540px;
+            width: 90%;
+            border: 2px solid #00ff88;
+        }
+        .csv-modal-content h2 { color: #00ff88; margin-bottom: 1rem; font-size: 1.2rem; }
+        .csv-drop-zone {
+            border: 2px dashed #0f3460;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 1rem;
+        }
+        .csv-drop-zone.drag-over { border-color: #00ff88; background: rgba(0,255,136,0.05); }
+        .csv-drop-zone p { color: #888; font-size: 0.9rem; margin: 0.4rem 0; }
+        .csv-drop-zone .csv-fname { color: #00ff88; font-weight: 600; margin-top: 0.5rem; }
+        .csv-hint {
+            background: #1a1a2e;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 1rem;
+            font-family: monospace;
+            line-height: 1.7;
+        }
+        .csv-hint strong { color: #00d9ff; }
+        .csv-result {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            display: none;
+        }
+        .csv-result.visible { display: block; }
+        .csv-result .ok { color: #00ff88; }
+        .csv-result .err { color: #ff6b6b; }
+        .csv-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem; }
+
+        /* Newly added item highlight */
+        .kb-item.newly-added {
+            border-color: #00ff88 !important;
+            box-shadow: 0 0 12px rgba(0,255,136,0.25);
+        }
+        .badge-new {
+            background: #00ff88;
+            color: #000;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.15rem 0.5rem;
+            border-radius: 8px;
+            animation: pulse-new 1.5s infinite;
+        }
+        @keyframes pulse-new {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
         .edit-btn {
             background: #ffa500;
             color: white;
@@ -370,9 +447,10 @@
     <div class="container">
         <div class="config-panel">
             <label>Admin Key:</label>
-            <input type="password" id="admin-key" placeholder="Enter admin API key">
+            <input type="password" id="admin-key" placeholder="Enter admin API key" onkeydown="if(event.key==='Enter') loadAllKBItems()">
             <label>Admin ID:</label>
             <input type="text" id="admin-id" placeholder="Your admin ID" value="admin_default">
+            <button onclick="loadAllKBItems()" style="background:#00d9ff;color:#1a1a2e;padding:0.5rem 1.2rem;border:none;border-radius:5px;cursor:pointer;font-weight:600;">🔄 Load Items</button>
         </div>
         
         <div class="search-bar">
@@ -380,13 +458,44 @@
             <button onclick="searchKB()">🔍 Search</button>
             <button onclick="loadAllKBItems()" style="background: #0f3460; color: #00d9ff;">📋 View All</button>
             <button onclick="openAddModal()" style="background: #00ff88; color: #1a1a2e;">➕ Add New Entry</button>
+            <button onclick="openCSVModal()" style="background: #00d9ff; color: #1a1a2e;">📥 Import CSV</button>
+        </div>
+
+        <div id="kb-count-bar" style="color:#888;font-size:0.9rem;margin-bottom:1rem;display:none;">
+            Showing <strong id="kb-count">0</strong> KB entries
         </div>
         
         <div id="kb-items" class="kb-items">
-            <div class="loading">Loading KB items...</div>
+            <div class="empty-state" style="color:#888;">
+                <p>🔑 Enter your admin key above and click <strong style="color:#00d9ff;">Load Items</strong> to view KB entries.</p>
+            </div>
         </div>
     </div>
     
+    <!-- CSV Import Modal -->
+    <div id="csv-modal" class="csv-modal">
+        <div class="csv-modal-content">
+            <h2>📥 Import KB from CSV</h2>
+            <div class="csv-hint">
+                <strong>Required columns:</strong> question, answer<br>
+                <strong>Optional columns:</strong> category, language<br>
+                <strong>Example row:</strong><br>
+                question,answer,category,language<br>
+                "How to apply for visa?","Visit migrationsverket.se",visa,English
+            </div>
+            <div class="csv-drop-zone" id="csv-drop-zone" onclick="document.getElementById('csv-file-input').click()">
+                <p>📂 Click to browse or drag &amp; drop a CSV file here</p>
+                <p class="csv-fname" id="csv-fname"></p>
+                <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVFile(this)">
+            </div>
+            <div class="csv-result" id="csv-result"></div>
+            <div class="csv-actions">
+                <button class="btn-secondary" onclick="closeCSVModal()">Close</button>
+                <button class="btn-primary" id="csv-import-btn" onclick="submitCSV()" disabled style="background:#00ff88;color:#1a1a2e;">📥 Import</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Modal -->
     <div id="edit-modal" class="modal">
         <div class="modal-content">
@@ -493,6 +602,8 @@
     <script>
         const API_BASE = window.location.origin;
         let currentEditingId = null;
+        // IDs added during this session — shown with 🆕 badge
+        const newlyAddedIds = new Set();
         
         function getAdminKey() {
             return document.getElementById('admin-key').value;
@@ -514,36 +625,43 @@
         }
         
         async function loadAllKBItems() {
+            const key = getAdminKey();
+            if (!key) {
+                showToast('❌ Please enter your admin key first', 'error');
+                document.getElementById('admin-key').focus();
+                return;
+            }
             const container = document.getElementById('kb-items');
-            container.innerHTML = '<div class="loading">Loading KB items from database...</div>';
+            container.innerHTML = '<div class="loading">⏳ Loading KB items...</div>';
+            document.getElementById('kb-count-bar').style.display = 'none';
             
             try {
-                const response = await fetch(`${API_BASE}/kb-curation/items?status=added_to_kb&limit=100`, {
-                    headers: {
-                        'X-Admin-Key': getAdminKey()
-                    }
+                const response = await fetch(`${API_BASE}/kb-curation/items?limit=200`, {
+                    headers: { 'X-Admin-Key': key }
                 });
                 
                 if (!response.ok) {
-                    throw new Error('Failed to load KB items');
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${response.status}`);
                 }
                 
                 const data = await response.json();
                 displayKBItems(data.items || []);
                 
             } catch (error) {
-                console.error('Error loading KB items:', error);
                 container.innerHTML = `<div class="empty-state">
-                    <p>❌ Error loading KB items: ${error.message}</p>
-                    <p style="margin-top: 1rem; font-size: 0.9rem;">Make sure you've entered a valid admin key.</p>
+                    <p>❌ Error: ${error.message}</p>
+                    <p style="margin-top:1rem;font-size:0.9rem;">Check your admin key and try again.</p>
                 </div>`;
             }
         }
         
         function displayKBItems(items) {
             const container = document.getElementById('kb-items');
+            const countBar = document.getElementById('kb-count-bar');
             
             if (items.length === 0) {
+                countBar.style.display = 'none';
                 container.innerHTML = `<div class="empty-state">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -552,42 +670,44 @@
                 </div>`;
                 return;
             }
+
+            // Show count
+            document.getElementById('kb-count').textContent = items.length;
+            countBar.style.display = 'block';
             
-            container.innerHTML = items.map(item => `
-                <div class="kb-item">
+            container.innerHTML = items.map((item, idx) => {
+                const question = item.user_question || item.question || '';
+                const answer   = item.admin_response || item.answer || '';
+                const faqId    = item.kb_document_id || item.faq_id || 'N/A';
+                const addedAt  = item.added_to_kb_at || item.created_at;
+                const source   = faqId.includes('csv') ? '📥 CSV' : '✍️ Manual';
+                const lang     = item.user_language || 'English';
+                const isNew    = newlyAddedIds.has(item.id);
+                return `
+                <div class="kb-item${isNew ? ' newly-added' : ''}" id="kb-item-${item.id}">
                     <div class="kb-item-header">
                         <div class="kb-item-meta">
-                            <span class="kb-item-badge ${item.source === 'admin_curated' ? 'admin' : ''}">
-                                ${item.category || 'general'}
-                            </span>
-                            <span class="kb-item-badge">
-                                ${item.source || 'unknown'}
-                            </span>
+                            <span style="color:#888;font-size:0.82rem;">#${idx + 1}</span>
+                            ${isNew ? '<span class="badge-new">🆕 NEW</span>' : ''}
+                            <span class="kb-item-badge ${item.source === 'admin_curated' ? 'admin' : ''}">${item.category || 'general'}</span>
+                            <span class="kb-item-badge">${lang}</span>
+                            <span class="kb-item-badge" style="background:#1a1a2e;color:#888;">${source}</span>
                         </div>
                     </div>
-                    <div class="kb-item-question">
-                        ❓ ${escapeHtml(item.user_question || item.question)}
-                    </div>
-                    <div class="kb-item-answer">
-                        ${escapeHtml(item.admin_response || item.answer)}
-                    </div>
+                    <div class="kb-item-question">❓ ${escapeHtml(question)}</div>
+                    <div class="kb-item-answer">${escapeHtml(answer)}</div>
                     <div class="kb-item-footer">
                         <div class="kb-item-info">
-                            <div>FAQ ID: ${item.kb_document_id || item.faq_id || 'N/A'}</div>
-                            <div>Added: ${new Date(item.added_to_kb_at || item.created_at).toLocaleString()}</div>
-                            <div>By: ${item.added_by_admin || 'Unknown'}</div>
+                            <div>FAQ ID: <code style="color:#00d9ff;font-size:0.8rem;">${faqId}</code></div>
+                            <div>Added: ${addedAt ? new Date(addedAt).toLocaleString() : 'N/A'} &nbsp;|&nbsp; By: ${item.added_by_admin || 'Unknown'}</div>
                         </div>
                         <div>
-                            <button class="edit-btn" onclick="openEditModal(${item.id}, '${escapeHtml(item.user_question || item.question)}', '${escapeHtml(item.admin_response || item.answer)}', '${item.category || 'general'}', '${item.kb_document_id || item.faq_id}')">
-                                ✏️ Edit
-                            </button>
-                            <button class="remove-btn" onclick="removeFromKB(${item.id}, '${item.kb_document_id || item.faq_id}')">
-                                🗑️ Remove
-                            </button>
+                            <button class="edit-btn" onclick="openEditModal(${item.id}, '${escapeJs(question)}', '${escapeJs(answer)}', '${item.category || 'general'}', '${faqId}')">✏️ Edit</button>
+                            <button class="remove-btn" onclick="removeFromKB(${item.id}, '${faqId}')">🗑️ Delete</button>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
         }
         
         async function removeFromKB(questionId, faqId) {
@@ -627,8 +747,13 @@
         
         function escapeHtml(text) {
             const div = document.createElement('div');
-            div.textContent = text;
+            div.textContent = String(text || '');
             return div.innerHTML;
+        }
+
+        // Safe escape for inline JS string attributes (single-quote safe)
+        function escapeJs(text) {
+            return String(text || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ').replace(/\r/g, '');
         }
         
         function openEditModal(questionId, question, answer, category, faqId) {
@@ -750,8 +875,12 @@
                 
                 if (data.success) {
                     showToast(`✅ ${data.message} (FAQ ID: ${data.faq_id})`, 'success');
+                    // Track this new entry so it gets highlighted
+                    if (data.question_id) newlyAddedIds.add(data.question_id);
                     closeAddModal();
-                    loadAllKBItems(); // Reload list
+                    await loadAllKBItems();
+                    // Scroll to the list
+                    document.getElementById('kb-items').scrollIntoView({ behavior: 'smooth', block: 'start' });
                 } else {
                     throw new Error(data.detail || 'Failed to add KB entry');
                 }
@@ -768,9 +897,105 @@
                 closeAddModal();
             }
         });
-        
-        // Load items on page load
-        loadAllKBItems();
+
+        // ── CSV IMPORT ──────────────────────────────────────────
+        let csvFile = null;
+
+        function openCSVModal() {
+            document.getElementById('csv-modal').classList.add('active');
+        }
+
+        function closeCSVModal() {
+            document.getElementById('csv-modal').classList.remove('active');
+            csvFile = null;
+            document.getElementById('csv-fname').textContent = '';
+            document.getElementById('csv-import-btn').disabled = true;
+            document.getElementById('csv-result').classList.remove('visible');
+            document.getElementById('csv-result').innerHTML = '';
+            document.getElementById('csv-file-input').value = '';
+        }
+
+        document.getElementById('csv-modal').addEventListener('click', function(e) {
+            if (e.target === this) closeCSVModal();
+        });
+
+        function handleCSVFile(input) {
+            csvFile = input.files[0] || null;
+            document.getElementById('csv-fname').textContent = csvFile ? csvFile.name : '';
+            document.getElementById('csv-import-btn').disabled = !csvFile;
+            document.getElementById('csv-result').classList.remove('visible');
+        }
+
+        // Drag & drop
+        const csvDrop = document.getElementById('csv-drop-zone');
+        csvDrop.addEventListener('dragover', e => { e.preventDefault(); csvDrop.classList.add('drag-over'); });
+        csvDrop.addEventListener('dragleave', () => csvDrop.classList.remove('drag-over'));
+        csvDrop.addEventListener('drop', e => {
+            e.preventDefault();
+            csvDrop.classList.remove('drag-over');
+            const f = e.dataTransfer.files[0];
+            if (f && f.name.toLowerCase().endsWith('.csv')) {
+                csvFile = f;
+                document.getElementById('csv-fname').textContent = f.name;
+                document.getElementById('csv-import-btn').disabled = false;
+                document.getElementById('csv-result').classList.remove('visible');
+            } else {
+                showToast('Please drop a .csv file', 'error');
+            }
+        });
+
+        async function submitCSV() {
+            if (!csvFile) return;
+            const btn = document.getElementById('csv-import-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Importing...';
+            const resultBox = document.getElementById('csv-result');
+            resultBox.classList.remove('visible');
+
+            try {
+                const form = new FormData();
+                form.append('file', csvFile);
+
+                const res = await fetch(
+                    `${API_BASE}/kb-curation/csv-import?admin_id=${encodeURIComponent(getAdminId())}`,
+                    { method: 'POST', headers: { 'X-Admin-Key': getAdminKey() }, body: form }
+                );
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Import failed');
+
+                const s = data.summary;
+                let html = `<div class="ok">✅ <strong>${s.success} of ${s.total}</strong> rows imported successfully.</div>`;
+                if (s.failed > 0) {
+                    html += `<div class="err" style="margin-top:0.5rem;">❌ ${s.failed} row(s) failed:</div>`;
+                    html += `<ul style="margin:0.4rem 0 0 1rem;color:#ff6b6b;font-size:0.78rem;">`;
+                    s.errors.forEach(e => { html += `<li>${escapeHtml(e)}</li>`; });
+                    html += `</ul>`;
+                }
+                resultBox.innerHTML = html;
+                resultBox.classList.add('visible');
+                if (s.success > 0) {
+                    showToast(`Imported ${s.success} KB entries`, 'success');
+                    // Track newly added IDs for highlight
+                    if (data.summary.added_ids) data.summary.added_ids.forEach(id => newlyAddedIds.add(id));
+                    // Close modal, reload list and scroll to it
+                    setTimeout(async () => {
+                        closeCSVModal();
+                        await loadAllKBItems();
+                        document.getElementById('kb-items').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 1200);
+                }
+            } catch (err) {
+                resultBox.innerHTML = `<div class="err">❌ ${escapeHtml(err.message)}</div>`;
+                resultBox.classList.add('visible');
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📥 Import';
+            }
+        }
+        // ── END CSV IMPORT ───────────────────────────────────────
+
+        // Do NOT auto-load — wait for admin key entry
     </script>
 </body>
 </html>

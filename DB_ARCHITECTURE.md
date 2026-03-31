@@ -53,6 +53,24 @@ The `kb_unanswered_questions` table now supports:
 
 See `kb_curation_schema.sql` for full table definition.
 
+**Super Admin Feature (NEW)**
+Super admin has elevated privileges to:
+1. **Monitor All Conversations**: View all active conversations across all admins in real-time
+2. **Takeover Conversations**: Intervene and take over any conversation from any admin
+3. **View Admin Statistics**: See workload, query counts, resolution times for all admins
+4. **Query Distribution**: Monitor how queries are distributed across admins
+
+**Database Changes for Super Admin**:
+- `admin_availability.role` field: Distinguishes 'admin' from 'super_admin'
+- `active_conversations` tracking: `super_admin_id`, `previous_admin_id`, `super_admin_takeover`, `super_admin_takeover_at`
+- `super_admin_audit_log` table: Tracks all super admin actions (takeovers, releases)
+- Views: `v_super_admin_dashboard` (admin stats), `v_all_conversations_monitor` (conversation overview)
+
+**Assignment Logic**:
+- Queries distributed to online admins based on round-robin load balancing (least loaded first)
+- If no admin available, queries go to pending queue
+- Super admin can redistribute by taking over conversations
+
 **Security & adapter notes**
 - The app supports unauthenticated user messages (the webhook can be left open) but you should:
   - Implement provider webhook signature verification in the adapter (Twilio/Meta) before forwarding.
@@ -75,12 +93,20 @@ mysql -u agent_user -p sweden_relocators_ai < supervision_schema.sql
 **Dev integration checklist for backend developer**
 - Run `supervision_schema.sql` to create tables and views.
 - Run `kb_curation_schema.sql` to create KB curation tables (includes `kb_unanswered_questions` table).
+- **NEW**: Run `super_admin_schema.sql` to create super admin features (role field, audit log, views).
 - Confirm `settings.DATABASE_URL` points to the DB and credentials use `agent_user`.
 - Implement `assign_to_admin()` using a transaction with `SELECT ... FOR UPDATE` (example in the SQL file).
 - Ensure admin endpoints require `ADMIN_API_KEY`.
 - **NEW**: Implement KB Curation API endpoints (4.8 - 4.9 in BACKEND_API_REQUIREMENTS.md):
   - PUT `/kb-curation/update-kb/{question_id}` - Update existing KB entry
   - POST `/kb-curation/manual-add` - Manually add new KB entry
+- **NEW**: Implement Super Admin API endpoints (6.1 - 6.6 in BACKEND_API_REQUIREMENTS.md):
+  - GET `/super-admin/verify/{admin_id}` - Verify super admin role
+  - GET `/super-admin/dashboard/stats` - Get all admin statistics
+  - GET `/super-admin/conversations/monitor` - Monitor all conversations
+  - GET `/super-admin/query-distribution` - Get query distribution
+  - POST `/super-admin/takeover/{session_id}` - Takeover conversation
+  - POST `/super-admin/release/{session_id}` - Release conversation
 - Add monitoring queries for queue length and average wait time (use `admin_queue` and `v_active_conversations_summary`).
 
 **Contact / Handoff notes**

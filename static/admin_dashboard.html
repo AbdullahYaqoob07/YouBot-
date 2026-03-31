@@ -299,9 +299,57 @@
         
         /* Admin Input */
         .admin-input {
-            padding: 1rem;
+            padding: 0.75rem 1rem 1rem;
             background: #16213e;
             border-top: 1px solid #0f3460;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .ai-enhance-toolbar {
+            display: none;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            padding: 0.5rem 0.25rem 0.25rem;
+        }
+
+        .ai-enhance-toolbar.visible {
+            display: flex;
+        }
+
+        .enhance-label {
+            font-size: 0.7rem;
+            color: #888;
+            align-self: center;
+            margin-right: 0.25rem;
+            white-space: nowrap;
+        }
+
+        .enhance-btn {
+            padding: 0.3rem 0.65rem;
+            font-size: 0.72rem;
+            border: 1px solid #0f3460;
+            border-radius: 20px;
+            background: #1a1a2e;
+            color: #ccc;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .enhance-btn:hover {
+            background: #0f3460;
+            color: #fff;
+            border-color: #00d9ff;
+        }
+
+        .enhance-btn.loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .admin-input-row {
             display: flex;
             gap: 0.5rem;
         }
@@ -538,6 +586,74 @@
             background: #1a4a7a;
             color: #eee;
         }
+
+        .btn-reassign { background: #9b59b6; color: white; }
+        .btn-reassign:hover { background: #8e44ad; }
+
+        .reassign-modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75);
+            z-index: 10001; align-items: center; justify-content: center;
+        }
+        .reassign-modal.active { display: flex; }
+        .reassign-modal-content {
+            background: #16213e; padding: 2rem; border-radius: 12px;
+            max-width: 480px; width: 90%;
+            border: 2px solid #9b59b6;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .reassign-modal-content h2 { color: #9b59b6; margin-bottom: 1.25rem; font-size: 1.2rem; }
+        .reassign-form-group { margin-bottom: 1rem; }
+        .reassign-form-group label { display: block; color: #888; font-size: 0.85rem; margin-bottom: 0.4rem; }
+        .reassign-form-group select,
+        .reassign-form-group input {
+            width: 100%; padding: 0.65rem;
+            border: 1px solid #0f3460; border-radius: 8px;
+            background: #1a1a2e; color: #eee; font-size: 0.95rem;
+        }
+        .reassign-form-group select:focus,
+        .reassign-form-group input:focus { outline: none; border-color: #9b59b6; }
+        .reassign-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem; }
+
+        /* CSV Import Modal */
+        .csv-modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75);
+            z-index: 10002; align-items: center; justify-content: center;
+        }
+        .csv-modal.active { display: flex; }
+        .csv-modal-content {
+            background: #16213e; padding: 2rem; border-radius: 12px;
+            max-width: 540px; width: 90%;
+            border: 2px solid #00ff88;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .csv-modal-content h2 { color: #00ff88; margin-bottom: 1rem; font-size: 1.2rem; }
+        .csv-drop-zone {
+            border: 2px dashed #0f3460; border-radius: 8px;
+            padding: 2rem; text-align: center; cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 1rem;
+        }
+        .csv-drop-zone.drag-over { border-color: #00ff88; background: rgba(0,255,136,0.05); }
+        .csv-drop-zone p { color: #888; font-size: 0.9rem; margin: 0.4rem 0; }
+        .csv-drop-zone .csv-filename { color: #00ff88; font-weight: 600; margin-top: 0.5rem; }
+        .csv-hint {
+            background: #1a1a2e; border: 1px solid #0f3460; border-radius: 6px;
+            padding: 0.75rem 1rem; font-size: 0.8rem; color: #888;
+            margin-bottom: 1rem; font-family: monospace; line-height: 1.6;
+        }
+        .csv-hint strong { color: #00d9ff; }
+        .csv-result {
+            background: #1a1a2e; border-radius: 8px; padding: 1rem;
+            margin-top: 1rem; font-size: 0.85rem; display: none;
+        }
+        .csv-result.visible { display: block; }
+        .csv-result .ok { color: #00ff88; }
+        .csv-result .err { color: #ff6b6b; }
+        .csv-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem; }
     </style>
 </head>
 <body>
@@ -552,10 +668,14 @@
     
     <div class="config-panel">
         <label>Admin ID:</label>
-        <input type="text" id="admin-id" value="admin_default" placeholder="Your admin ID">
+        <input type="text" id="admin-id" value="admin_default" placeholder="Your admin ID" onchange="checkSuperAdmin()">
+        <label>Admin Name:</label>
+        <input type="text" id="admin-name" placeholder="Your display name" value="">
         <label>Admin Key:</label>
         <input type="password" id="admin-key" value="5Cch-yzNNLBzqc0rW6EBSQI2PSGPbWLHv4yhajHVQTs" placeholder="X-Admin-Key">
         <button class="refresh-btn" onclick="loadConversations()">🔄 Refresh</button>
+        <button class="refresh-btn" style="background:#00ff88;color:#000;" onclick="document.getElementById('csv-modal').classList.add('active')">📥 Import CSV</button>
+        <span id="super-admin-badge" style="display:none;background:#9b59b6;color:#fff;font-size:0.75rem;padding:3px 10px;border-radius:12px;">👑 Super Admin</span>
     </div>
     
     <div class="container">
@@ -581,8 +701,11 @@
                     <button class="btn btn-release" id="btn-release" onclick="releaseConversation(false)" style="display: none;">
                         ↩️ Release to AI
                     </button>
-                    <button class="btn btn-end" id="btn-end" onclick="releaseConversation(true)" style="display: none;">
+                    <button class="btn btn-end" id="btn-end" onclick="releaseConversation(false)" style="display: none;">
                         ✓ End Conversation
+                    </button>
+                    <button class="btn btn-reassign" id="btn-reassign" onclick="openReassignModal()" style="display: none;">
+                        🔀 Reassign
                     </button>
                 </div>
             </div>
@@ -597,9 +720,69 @@
             </div>
             
             <div class="admin-input" id="admin-input" style="display: none;">
-                <input type="text" id="message-input" placeholder="Type your message as admin..." disabled>
-                <button onclick="previewAdminMessage()" id="preview-btn" disabled style="background:#00d9ff;color:#000;margin-right:6px;">Preview</button>
-                <button onclick="sendAdminMessage()" id="send-btn" disabled>Send</button>
+                <!-- AI Enhance Toolbar -->
+                <div class="ai-enhance-toolbar" id="enhance-toolbar">
+                    <span class="enhance-label">✨ AI:</span>
+                    <button class="enhance-btn" onclick="enhanceMessage('shorten')" title="Make message shorter">✂️ Shorten</button>
+                    <button class="enhance-btn" onclick="enhanceMessage('extend')" title="Add more detail">📝 Extend</button>
+                    <button class="enhance-btn" onclick="enhanceMessage('summarize')" title="Summarize the message">📋 Summarize</button>
+                    <button class="enhance-btn" onclick="enhanceMessage('rephrase')" title="Rephrase for clarity">🔄 Rephrase</button>
+                    <button class="enhance-btn" onclick="enhanceMessage('formal')" title="Make more professional">👔 Formal</button>
+                    <button class="enhance-btn" onclick="enhanceMessage('friendly')" title="Make more friendly">😊 Friendly</button>
+                    <button class="enhance-btn" onclick="enhanceMessage('bullets')" title="Convert to bullet points">• Bullets</button>
+                    <button class="enhance-btn" onclick="enhanceMessage('grammar')" title="Fix grammar & spelling">✅ Fix Grammar</button>
+                </div>
+                <div class="admin-input-row">
+                    <input type="text" id="message-input" placeholder="Type your message as admin..." disabled
+                        oninput="toggleEnhanceToolbar(this)">
+                    <button onclick="previewAdminMessage()" id="preview-btn" disabled style="background:#00d9ff;color:#000;">Preview</button>
+                    <button onclick="sendAdminMessage()" id="send-btn" disabled>Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSV Import Modal -->
+    <div class="csv-modal" id="csv-modal">
+        <div class="csv-modal-content">
+            <h2>📥 Import KB from CSV</h2>
+            <div class="csv-hint">
+                <strong>Required columns:</strong> question, answer<br>
+                <strong>Optional columns:</strong> category, language<br>
+                <strong>Example:</strong><br>
+                question,answer,category,language<br>
+                "How to apply for visa?","Visit migrationsverket.se",visa,English
+            </div>
+            <div class="csv-drop-zone" id="csv-drop-zone" onclick="document.getElementById('csv-file-input').click()">
+                <p>📂 Click to browse or drag &amp; drop a CSV file here</p>
+                <p class="csv-filename" id="csv-filename"></p>
+                <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVFile(this)">
+            </div>
+            <div class="csv-result" id="csv-result"></div>
+            <div class="csv-actions">
+                <button class="kb-btn kb-btn-secondary" onclick="closeCSVModal()">Close</button>
+                <button class="kb-btn kb-btn-primary" style="background:#00ff88;color:#000;" id="csv-import-btn" onclick="submitCSV()" disabled>📥 Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reassign Modal -->
+    <div class="reassign-modal" id="reassign-modal">
+        <div class="reassign-modal-content">
+            <h2>🔀 Reassign Conversation</h2>
+            <div class="reassign-form-group">
+                <label>Assign To Admin</label>
+                <select id="reassign-target-admin">
+                    <option value="">Loading admins...</option>
+                </select>
+            </div>
+            <div class="reassign-form-group">
+                <label>Reason (optional)</label>
+                <input type="text" id="reassign-reason" placeholder="e.g. Workload balancing" value="Super admin reassignment">
+            </div>
+            <div class="reassign-actions">
+                <button class="kb-btn kb-btn-secondary" onclick="closeReassignModal()">Cancel</button>
+                <button class="kb-btn kb-btn-primary" style="background:#9b59b6;" onclick="confirmReassign()">🔀 Reassign</button>
             </div>
         </div>
     </div>
@@ -649,6 +832,8 @@
         let currentSession = null;
         let isAdminTakeover = false;
         let refreshInterval = null;
+        let isSuperAdmin = false;
+        let allAdminsList = [];
         
         // Get config values
         function getAdminId() {
@@ -658,9 +843,48 @@
         function getAdminKey() {
             return document.getElementById('admin-key').value;
         }
+
+        function getAdminName() {
+            const n = document.getElementById('admin-name').value.trim();
+            return n || getAdminId(); // fall back to ID if name not set
+        }
+
+        // Register / refresh admin record in DB with the current display name
+        async function registerAdminName() {
+            try {
+                await fetch(`${API_BASE}/admin/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': getAdminKey() },
+                    body: JSON.stringify({
+                        adminId: getAdminId(),
+                        adminName: getAdminName(),
+                        adminEmail: `${getAdminId()}@swedenrelocators.se`,
+                        maxQueueSize: 10
+                    })
+                });
+            } catch (e) { /* silent — not critical */ }
+        }
+
+        async function checkSuperAdmin() {
+            const adminId = getAdminId();
+            if (!adminId) return;
+            try {
+                const res = await fetch(`${API_BASE}/super-admin/verify/${adminId}`, {
+                    headers: { 'X-Admin-Key': getAdminKey() }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    isSuperAdmin = data.is_super_admin || false;
+                    document.getElementById('super-admin-badge').style.display = isSuperAdmin ? 'inline-block' : 'none';
+                    if (currentSession) updateButtons();
+                }
+            } catch (e) { /* silent */ }
+        }
         
         // Load all conversations
         async function loadConversations() {
+            // Always sync admin display name to DB before loading
+            await registerAdminName();
             try {
                 const response = await fetch(`${API_BASE}/admin/supervision/conversations`, {
                     headers: {
@@ -767,7 +991,11 @@
         // Render conversation messages
         function renderConversation(conversation) {
             // Update header
-            document.getElementById('chat-user').textContent = `👤 ${conversation.user_id || 'Unknown User'}`;
+            const userLang = conversation.language || 'English';
+            const langBadge = (userLang && userLang.toLowerCase() !== 'english')
+                ? ` <span style="background:#00d9ff22;color:#00d9ff;font-size:0.7rem;padding:2px 7px;border-radius:10px;margin-left:6px;">🌐 ${userLang} → EN</span>`
+                : '';
+            document.getElementById('chat-user').innerHTML = `👤 ${conversation.user_id || 'Unknown User'}${langBadge}`;
             document.getElementById('chat-meta').textContent = 
                 `Channel: ${conversation.channel || 'webhook'} | Status: ${conversation.status}`;
             
@@ -787,15 +1015,23 @@
                 return;
             }
             
-            container.innerHTML = conversation.messages.map(msg => `
-                <div class="message ${msg.type}">
-                    <div class="message-header">
-                        <span>${getMessageLabel(msg)}</span>
-                        <span>${formatTime(msg.timestamp)}</span>
+            container.innerHTML = conversation.messages.map(msg => {
+                const translatedBadge = msg.translated
+                    ? `<span style="font-size:0.65rem;color:#00d9ff;background:#00d9ff22;padding:1px 6px;border-radius:8px;margin-left:6px;" title="Translated to English">🌐 translated</span>`
+                    : '';
+                const originalTip = (msg.translated && msg.original_content && msg.original_content !== msg.content)
+                    ? `<div style="font-size:0.72rem;color:#888;margin-top:0.35rem;border-top:1px solid rgba(255,255,255,0.07);padding-top:0.35rem;">Original: ${escapeHtml(msg.original_content)}</div>`
+                    : '';
+                return `
+                    <div class="message ${msg.type}">
+                        <div class="message-header">
+                            <span>${getMessageLabel(msg)}${translatedBadge}</span>
+                            <span>${formatTime(msg.timestamp)}</span>
+                        </div>
+                        <div class="message-content">${escapeHtml(msg.content)}${originalTip}</div>
                     </div>
-                    <div class="message-content">${escapeHtml(msg.content)}</div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
             
             // Scroll to bottom
             container.scrollTop = container.scrollHeight;
@@ -827,6 +1063,8 @@
             const sendBtn = document.getElementById('send-btn');
             const previewBtn = document.getElementById('preview-btn');
             
+            const reassignBtn = document.getElementById('btn-reassign');
+
             if (isAdminTakeover) {
                 takeoverBtn.style.display = 'none';
                 releaseBtn.style.display = 'inline-block';
@@ -843,6 +1081,11 @@
                 sendBtn.disabled = true;
                 if (previewBtn) previewBtn.disabled = true;
                 messageInput.placeholder = 'Take over conversation to send messages...';
+            }
+
+            // Reassign always visible to super admin when a conversation is selected
+            if (reassignBtn) {
+                reassignBtn.style.display = isSuperAdmin ? 'inline-block' : 'none';
             }
         }
         
@@ -909,18 +1152,26 @@
                     throw new Error(error.detail || 'Failed to send message');
                 }
                 
-                const sentMessage = message; // Store before clearing
+                const data = await response.json();
+                const sentMessage = message;      // Admin's English version
+                const userMessage = data.message_for_user || message; // Translated for user
+                const isTranslated = data.translated && userMessage !== message;
                 input.value = '';
+                discardEnhancement();
+                document.getElementById('enhance-toolbar').classList.remove('visible');
                 
                 // Add message to UI immediately
                 const container = document.getElementById('chat-messages');
+                const translatedNote = isTranslated
+                    ? `<div style="font-size:0.72rem;color:rgba(255,255,255,0.55);margin-top:0.35rem;border-top:1px solid rgba(255,255,255,0.15);padding-top:0.35rem;">Sent to user in ${data.user_language}: ${escapeHtml(userMessage)}</div>`
+                    : '';
                 const msgHtml = `
                     <div class="message admin">
                         <div class="message-header">
                             <span>🛡️ Admin (${getAdminId()})</span>
                             <span>${new Date().toLocaleTimeString()}</span>
                         </div>
-                        <div class="message-content">${escapeHtml(message)}</div>
+                        <div class="message-content">${escapeHtml(message)}${translatedNote}</div>
                     </div>
                 `;
                 container.insertAdjacentHTML('beforeend', msgHtml);
@@ -937,6 +1188,123 @@
                 console.error('Error sending message:', error);
                 showToast(error.message, 'error');
             }
+        }
+
+        // Show/hide AI enhance toolbar based on input content
+        function toggleEnhanceToolbar(input) {
+            const toolbar = document.getElementById('enhance-toolbar');
+            if (input.value.trim().length > 0 && isAdminTakeover) {
+                toolbar.classList.add('visible');
+            } else {
+                toolbar.classList.remove('visible');
+            }
+        }
+
+        // Apply AI enhancement to the message input
+        async function enhanceMessage(action) {
+            if (!currentSession || !isAdminTakeover) return;
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            if (!message) return;
+
+            // Mark all enhance buttons as loading
+            document.querySelectorAll('.enhance-btn').forEach(b => b.classList.add('loading'));
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/supervision/conversations/${currentSession}/message/enhance`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({ admin_id: getAdminId(), message, action })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Enhancement failed');
+                }
+
+                const data = await response.json();
+                const enhanced = (data.enhanced || '').trim();
+
+                if (enhanced && enhanced !== message) {
+                    // Show inline preview with accept/discard
+                    showEnhancePreview(message, enhanced, action, input);
+                } else {
+                    showToast('No changes made', 'info');
+                }
+
+            } catch (error) {
+                console.error('Enhance error:', error);
+                showToast(error.message || 'Enhancement failed', 'error');
+            } finally {
+                document.querySelectorAll('.enhance-btn').forEach(b => b.classList.remove('loading'));
+            }
+        }
+
+        // Show before/after comparison and let admin accept or discard
+        function showEnhancePreview(original, enhanced, action, inputEl) {
+            // Remove existing preview if any
+            const existing = document.getElementById('enhance-preview-box');
+            if (existing) existing.remove();
+
+            const actionLabels = {
+                shorten: '✂️ Shortened', extend: '📝 Extended', summarize: '📋 Summarized',
+                rephrase: '🔄 Rephrased', formal: '👔 Made Formal', friendly: '😊 Made Friendly',
+                bullets: '• Bullet Points', grammar: '✅ Grammar Fixed'
+            };
+
+            const box = document.createElement('div');
+            box.id = 'enhance-preview-box';
+            box.style.cssText = `
+                background: #0d1b2a; border: 1px solid #00d9ff; border-radius: 8px;
+                padding: 0.75rem 1rem; margin-top: 0.5rem; font-size: 0.85rem;
+                animation: fadeIn 0.2s ease;
+            `;
+            box.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                    <span style="color:#00d9ff;font-weight:600;">${actionLabels[action] || action}</span>
+                    <button onclick="discardEnhancement()" style="background:none;border:none;color:#888;cursor:pointer;font-size:1rem;">✕</button>
+                </div>
+                <div style="color:#aaa;font-size:0.75rem;margin-bottom:0.25rem;">Preview:</div>
+                <div style="color:#eee;line-height:1.5;white-space:pre-wrap;max-height:120px;overflow-y:auto;">${escapeHtml(enhanced)}</div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.6rem;">
+                    <button onclick="acceptEnhancement('${escapeJs(enhanced)}')" style="
+                        padding:0.35rem 0.9rem;background:#00d9ff;color:#000;
+                        border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;
+                    ">✓ Accept</button>
+                    <button onclick="discardEnhancement()" style="
+                        padding:0.35rem 0.9rem;background:#1a1a2e;color:#ccc;
+                        border:1px solid #0f3460;border-radius:6px;cursor:pointer;font-size:0.8rem;
+                    ">✕ Discard</button>
+                </div>
+            `;
+
+            const toolbar = document.getElementById('enhance-toolbar');
+            toolbar.insertAdjacentElement('afterend', box);
+        }
+
+        function acceptEnhancement(enhanced) {
+            const input = document.getElementById('message-input');
+            // Decode any escaped newlines
+            input.value = enhanced.replace(/\\n/g, '\n');
+            discardEnhancement();
+            input.focus();
+            showToast('Enhancement applied', 'success');
+        }
+
+        function discardEnhancement() {
+            const box = document.getElementById('enhance-preview-box');
+            if (box) box.remove();
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function escapeJs(str) {
+            return str.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,'');
         }
 
         // Preview / grammar-check admin message
@@ -1042,9 +1410,160 @@
         
         // Initial load
         loadConversations();
+        checkSuperAdmin();
         
         // Auto-refresh every 5 seconds
         refreshInterval = setInterval(loadConversations, 5000);
+
+        // ============================================
+        // CSV IMPORT FUNCTIONALITY
+        // ============================================
+        let csvFile = null;
+
+        function handleCSVFile(input) {
+            csvFile = input.files[0] || null;
+            document.getElementById('csv-filename').textContent = csvFile ? csvFile.name : '';
+            document.getElementById('csv-import-btn').disabled = !csvFile;
+            document.getElementById('csv-result').classList.remove('visible');
+            document.getElementById('csv-result').innerHTML = '';
+        }
+
+        // Drag & drop support
+        const dropZone = document.getElementById('csv-drop-zone');
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const dt = e.dataTransfer;
+            if (dt.files.length) {
+                const f = dt.files[0];
+                if (f.name.toLowerCase().endsWith('.csv')) {
+                    csvFile = f;
+                    document.getElementById('csv-filename').textContent = f.name;
+                    document.getElementById('csv-import-btn').disabled = false;
+                    document.getElementById('csv-result').classList.remove('visible');
+                } else {
+                    showToast('Please drop a .csv file', 'error');
+                }
+            }
+        });
+
+        function closeCSVModal() {
+            document.getElementById('csv-modal').classList.remove('active');
+            csvFile = null;
+            document.getElementById('csv-filename').textContent = '';
+            document.getElementById('csv-import-btn').disabled = true;
+            document.getElementById('csv-result').classList.remove('visible');
+            document.getElementById('csv-result').innerHTML = '';
+            document.getElementById('csv-file-input').value = '';
+        }
+
+        async function submitCSV() {
+            if (!csvFile) return;
+            const btn = document.getElementById('csv-import-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Importing...';
+            const resultBox = document.getElementById('csv-result');
+            resultBox.classList.remove('visible');
+
+            try {
+                const form = new FormData();
+                form.append('file', csvFile);
+
+                const res = await fetch(`${API_BASE}/kb-curation/csv-import?admin_id=${encodeURIComponent(getAdminId())}`, {
+                    method: 'POST',
+                    headers: { 'X-Admin-Key': getAdminKey() },
+                    body: form
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Import failed');
+                }
+
+                const s = data.summary;
+                let html = `<div class="ok">✅ <strong>${s.success} of ${s.total}</strong> rows imported successfully.</div>`;
+                if (s.failed > 0) {
+                    html += `<div class="err" style="margin-top:0.5rem;">❌ ${s.failed} row(s) failed:</div>`;
+                    html += `<ul style="margin:0.4rem 0 0 1rem;color:#ff6b6b;font-size:0.78rem;">`;
+                    s.errors.forEach(e => { html += `<li>${escapeHtml(e)}</li>`; });
+                    html += `</ul>`;
+                }
+                resultBox.innerHTML = html;
+                resultBox.classList.add('visible');
+                if (s.success > 0) showToast(`Imported ${s.success} KB entries`, 'success');
+
+            } catch (err) {
+                resultBox.innerHTML = `<div class="err">❌ ${escapeHtml(err.message)}</div>`;
+                resultBox.classList.add('visible');
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📥 Import';
+            }
+        }
+
+        // ============================================
+        // REASSIGN FUNCTIONALITY (Super Admin only)
+        // ============================================
+        async function openReassignModal() {
+            if (!currentSession) return;
+            const select = document.getElementById('reassign-target-admin');
+            select.innerHTML = '<option value="">Loading admins...</option>';
+            document.getElementById('reassign-modal').classList.add('active');
+            try {
+                const res = await fetch(`${API_BASE}/super-admin/dashboard/stats`, {
+                    headers: { 'X-Admin-Key': getAdminKey() }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    allAdminsList = (data.admins || []).filter(a => a.admin_id !== getAdminId());
+                    if (allAdminsList.length) {
+                        select.innerHTML = allAdminsList.map(a =>
+                            `<option value="${a.admin_id}">${a.admin_name || a.admin_id} (${a.status} · ${a.current_queue_count} active)</option>`
+                        ).join('');
+                    } else {
+                        select.innerHTML = '<option value="">No other admins found</option>';
+                    }
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    select.innerHTML = `<option value="">Error: ${err.detail || res.statusText}</option>`;
+                }
+            } catch (e) {
+                console.error('Failed to load admins:', e);
+                select.innerHTML = '<option value="">Failed to load admins — check server</option>';
+            }
+        }
+
+        function closeReassignModal() {
+            document.getElementById('reassign-modal').classList.remove('active');
+        }
+
+        async function confirmReassign() {
+            const targetAdminId = document.getElementById('reassign-target-admin').value;
+            const reason = document.getElementById('reassign-reason').value.trim() || 'Super admin reassignment';
+            if (!targetAdminId) {
+                showToast('Please select a target admin', 'error');
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/super-admin/reassign/${currentSession}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': getAdminKey() },
+                    body: JSON.stringify({ super_admin_id: getAdminId(), target_admin_id: targetAdminId, reason })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Reassignment failed');
+                closeReassignModal();
+                showToast(`Reassigned to ${targetAdminId}`, 'success');
+                loadConversations();
+            } catch (err) {
+                console.error('Reassign error:', err);
+                showToast(err.message || 'Reassignment failed', 'error');
+            }
+        }
 
         // ============================================
         // ADD TO KB FUNCTIONALITY
