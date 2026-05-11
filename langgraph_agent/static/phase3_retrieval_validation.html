@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phase 3 Retrieval Validation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: #16213e;
+            border-bottom: 2px solid #0f3460;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.3rem;
+        }
+
+        .nav {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            background: #0f3460;
+            color: #00d9ff;
+            text-decoration: none;
+            padding: 0.45rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .nav a:hover {
+            background: #1a4a7a;
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .card {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 10px;
+            padding: 1rem;
+        }
+
+        .card h2 {
+            color: #00d9ff;
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .field label {
+            color: #a4b5c6;
+            font-size: 0.85rem;
+        }
+
+        .field input,
+        .field textarea,
+        .field select {
+            width: 100%;
+            border: 1px solid #2f4d69;
+            border-radius: 6px;
+            padding: 0.6rem;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 0.95rem;
+        }
+
+        .field textarea {
+            min-height: 110px;
+            resize: vertical;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.6rem;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.2rem;
+        }
+
+        button {
+            border: 0;
+            border-radius: 6px;
+            padding: 0.55rem 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: #00d9ff;
+            color: #10263d;
+        }
+
+        button.secondary {
+            background: #2f4d69;
+            color: #dbe7f3;
+        }
+
+        button:hover {
+            filter: brightness(1.08);
+        }
+
+        .result {
+            background: #101827;
+            border: 1px solid #2f4d69;
+            border-radius: 8px;
+            padding: 0.8rem;
+            min-height: 160px;
+            overflow: auto;
+            font-family: Consolas, monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            line-height: 1.35;
+        }
+
+        .status {
+            font-size: 0.85rem;
+            color: #8fb3d1;
+            margin: 0.5rem 0 0.75rem;
+        }
+
+        @media (max-width: 700px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Phase 3 Retrieval Validation</h1>
+        <nav class="nav">
+            <a href="/">Chat Console</a>
+            <a href="/admin">Admin Dashboard</a>
+            <a href="/phase1/tenant-validation">Phase 1 Validator</a>
+            <a href="/phase2/llm-validation">Phase 2 Validator</a>
+            <a href="/phase3/ingestion-validation">Ingestion Validator</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h2>Request Context</h2>
+            <div class="field">
+                <label for="adminKey">X-Admin-Key</label>
+                <input id="adminKey" type="text" placeholder="Enter admin API key" />
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="tenantId">X-Tenant-Id</label>
+                    <input id="tenantId" type="text" value="public" />
+                </div>
+                <div class="field">
+                    <label for="workspaceId">X-Workspace-Id</label>
+                    <input id="workspaceId" type="text" value="default" />
+                </div>
+            </div>
+            <p class="status" id="statusText">Ready.</p>
+        </section>
+
+        <section class="card">
+            <h2>Retrieval Profile</h2>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="defaultMode">defaultMode</label>
+                    <select id="defaultMode">
+                        <option value="rag" selected>rag</option>
+                        <option value="page_index">page_index</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="allowedModes">allowedModes (comma)</label>
+                    <input id="allowedModes" type="text" value="rag,page_index" />
+                </div>
+                <div class="field">
+                    <label for="pageWindowLimit">pageWindowLimit</label>
+                    <input id="pageWindowLimit" type="number" value="4" />
+                </div>
+                <div class="field">
+                    <label for="latencyBudgetMs">latencyBudgetMs</label>
+                    <input id="latencyBudgetMs" type="number" value="2500" />
+                </div>
+                <div class="field">
+                    <label for="complianceCriticality">complianceCriticality</label>
+                    <input id="complianceCriticality" type="number" min="0" max="1" step="0.1" value="0.5" />
+                </div>
+                <div class="field">
+                    <label for="averageDocumentPages">averageDocumentPages</label>
+                    <input id="averageDocumentPages" type="number" value="10" />
+                </div>
+                <div class="field">
+                    <label for="queryComplexity">queryComplexity</label>
+                    <input id="queryComplexity" type="number" min="0" max="1" step="0.1" value="0.5" />
+                </div>
+                <div class="field">
+                    <label for="costSensitivity">costSensitivity</label>
+                    <input id="costSensitivity" type="number" min="0" max="1" step="0.1" value="0.5" />
+                </div>
+            </div>
+            <div class="btn-row">
+                <button onclick="getProfile()">GET /admin/retrieval/profile</button>
+                <button class="secondary" onclick="upsertProfile()">POST /admin/retrieval/profile</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Recommendation Check</h2>
+            <div class="field">
+                <label for="queryInput">query</label>
+                <textarea id="queryInput">What are the requirements for residence permit renewal if my passport expires soon?</textarea>
+            </div>
+            <div class="field">
+                <label for="modeOverride">selectedModeOverride (optional)</label>
+                <input id="modeOverride" type="text" placeholder="rag or page_index" />
+            </div>
+            <div class="btn-row">
+                <button onclick="recommendMode()">POST /admin/retrieval/recommend</button>
+            </div>
+        </section>
+
+        <section class="card" style="grid-column: 1 / -1;">
+            <h2>Response Output</h2>
+            <div class="result" id="output">{}</div>
+        </section>
+    </main>
+
+    <script>
+        function contextHeaders(includeJson) {
+            const headers = {
+                "X-Admin-Key": document.getElementById("adminKey").value.trim(),
+                "X-Tenant-Id": document.getElementById("tenantId").value.trim() || "public",
+                "X-Workspace-Id": document.getElementById("workspaceId").value.trim() || "default"
+            };
+            if (includeJson) {
+                headers["Content-Type"] = "application/json";
+            }
+            return headers;
+        }
+
+        function setStatus(message, isError) {
+            const el = document.getElementById("statusText");
+            el.textContent = message;
+            el.style.color = isError ? "#ff8f8f" : "#8fb3d1";
+        }
+
+        function printOutput(data) {
+            document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function callApi(method, url, body) {
+            const init = {
+                method,
+                headers: contextHeaders(Boolean(body))
+            };
+            if (body) {
+                init.body = JSON.stringify(body);
+            }
+
+            const response = await fetch(url, init);
+            const contentType = response.headers.get("content-type") || "";
+            let payload;
+
+            if (contentType.includes("application/json")) {
+                payload = await response.json();
+            } else {
+                payload = { raw: await response.text() };
+            }
+
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}: ${JSON.stringify(payload)}`);
+            }
+
+            return payload;
+        }
+
+        function profilePayload() {
+            const allowedModesRaw = document.getElementById("allowedModes").value;
+            const allowedModes = allowedModesRaw
+                .split(",")
+                .map(v => v.trim())
+                .filter(Boolean);
+
+            return {
+                defaultMode: document.getElementById("defaultMode").value,
+                allowedModes,
+                pageWindowLimit: Number(document.getElementById("pageWindowLimit").value),
+                complianceCriticality: Number(document.getElementById("complianceCriticality").value),
+                averageDocumentPages: Number(document.getElementById("averageDocumentPages").value),
+                queryComplexity: Number(document.getElementById("queryComplexity").value),
+                latencyBudgetMs: Number(document.getElementById("latencyBudgetMs").value),
+                costSensitivity: Number(document.getElementById("costSensitivity").value)
+            };
+        }
+
+        async function getProfile() {
+            setStatus("Loading retrieval profile...", false);
+            try {
+                const result = await callApi("GET", "/admin/retrieval/profile");
+                printOutput(result);
+                setStatus("Profile loaded successfully.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Profile load failed.", true);
+            }
+        }
+
+        async function upsertProfile() {
+            setStatus("Saving retrieval profile...", false);
+            try {
+                const result = await callApi("POST", "/admin/retrieval/profile", profilePayload());
+                printOutput(result);
+                setStatus("Profile saved successfully.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Profile save failed.", true);
+            }
+        }
+
+        async function recommendMode() {
+            setStatus("Getting retrieval recommendation...", false);
+            const selectedModeOverride = document.getElementById("modeOverride").value.trim();
+
+            const payload = {
+                query: document.getElementById("queryInput").value.trim(),
+                selectedModeOverride: selectedModeOverride || null
+            };
+
+            try {
+                const result = await callApi("POST", "/admin/retrieval/recommend", payload);
+                printOutput(result);
+                setStatus("Recommendation generated.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Recommendation failed.", true);
+            }
+        }
+    </script>
+</body>
+</html>

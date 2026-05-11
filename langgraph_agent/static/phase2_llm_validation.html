@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phase 2 LLM Validation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: #16213e;
+            border-bottom: 2px solid #0f3460;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.3rem;
+        }
+
+        .nav {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            background: #0f3460;
+            color: #00d9ff;
+            text-decoration: none;
+            padding: 0.45rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.88rem;
+        }
+
+        .nav a:hover {
+            background: #1a4a7a;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .card {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 10px;
+            padding: 1rem;
+        }
+
+        .card h2 {
+            color: #00d9ff;
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .field label {
+            color: #a4b5c6;
+            font-size: 0.85rem;
+        }
+
+        .field input,
+        .field textarea,
+        .field select {
+            width: 100%;
+            border: 1px solid #2f4d69;
+            border-radius: 6px;
+            padding: 0.6rem;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 0.95rem;
+        }
+
+        .field textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.6rem;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.2rem;
+        }
+
+        button {
+            border: 0;
+            border-radius: 6px;
+            padding: 0.55rem 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: #00d9ff;
+            color: #10263d;
+        }
+
+        button.secondary {
+            background: #2f4d69;
+            color: #dbe7f3;
+        }
+
+        button:hover {
+            filter: brightness(1.08);
+        }
+
+        .status {
+            font-size: 0.85rem;
+            color: #8fb3d1;
+            margin: 0.5rem 0 0.75rem;
+        }
+
+        .toggle-line {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.2rem 0 0.6rem;
+            color: #b6cbe0;
+            font-size: 0.9rem;
+        }
+
+        .hint {
+            font-size: 0.8rem;
+            color: #9cb5cb;
+            margin-top: 0.2rem;
+        }
+
+        .result {
+            background: #101827;
+            border: 1px solid #2f4d69;
+            border-radius: 8px;
+            padding: 0.8rem;
+            min-height: 240px;
+            overflow: auto;
+            font-family: Consolas, monospace;
+            font-size: 0.84rem;
+            white-space: pre-wrap;
+            line-height: 1.35;
+        }
+
+        @media (max-width: 700px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Phase 2 BYOK and BYOM Validation</h1>
+        <nav class="nav">
+            <a href="/">Chat Console</a>
+            <a href="/phase1/tenant-validation">Phase 1 Validator</a>
+            <a href="/phase3/retrieval-validation">Phase 3 Retrieval</a>
+            <a href="/phase3/ingestion-validation">Phase 3 Ingestion</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h2>Request Context</h2>
+            <div class="field">
+                <label for="adminKey">X-Admin-Key</label>
+                <input id="adminKey" type="text" placeholder="admin API key" />
+            </div>
+            <div class="field">
+                <label for="apiKey">X-API-Key (for runtime webhook smoke)</label>
+                <input id="apiKey" type="text" placeholder="public API key" />
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="tenantId">X-Tenant-Id</label>
+                    <input id="tenantId" type="text" value="public" />
+                </div>
+                <div class="field">
+                    <label for="workspaceId">X-Workspace-Id</label>
+                    <input id="workspaceId" type="text" value="default" />
+                </div>
+            </div>
+            <p class="status" id="statusText">Ready.</p>
+        </section>
+
+        <section class="card">
+            <h2>Provider Catalog Check</h2>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="catalogProvider">provider</label>
+                    <select id="catalogProvider">
+                        <option value="groq" selected>groq</option>
+                        <option value="openai">openai</option>
+                        <option value="anthropic">anthropic</option>
+                        <option value="gemini">gemini</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="catalogApiKey">provider apiKey</label>
+                    <input id="catalogApiKey" type="text" placeholder="provider key for model catalog" />
+                </div>
+            </div>
+            <div class="toggle-line">
+                <input id="forceRefresh" type="checkbox" />
+                <label for="forceRefresh">forceRefresh catalog</label>
+            </div>
+            <div class="btn-row">
+                <button onclick="fetchProviderModels()">POST /admin/llm/providers/{provider}/models</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Workspace LLM Config</h2>
+            <div class="field">
+                <label for="pathWorkspaceId">workspace_id path value</label>
+                <input id="pathWorkspaceId" type="text" value="default" />
+                <p class="hint">Must match X-Workspace-Id header or endpoint returns 400.</p>
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="configProvider">provider</label>
+                    <select id="configProvider">
+                        <option value="groq" selected>groq</option>
+                        <option value="openai">openai</option>
+                        <option value="anthropic">anthropic</option>
+                        <option value="gemini">gemini</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="configModel">model</label>
+                    <input id="configModel" type="text" placeholder="example: llama-3.3-70b-versatile" />
+                </div>
+            </div>
+            <div class="field">
+                <label for="configApiKey">apiKey (to persist encrypted)</label>
+                <input id="configApiKey" type="text" placeholder="provider api key" />
+            </div>
+            <div class="btn-row">
+                <button onclick="saveWorkspaceConfig()">POST /admin/workspaces/{workspace_id}/llm-config</button>
+                <button class="secondary" onclick="loadWorkspaceConfig()">GET /admin/workspaces/{workspace_id}/llm-config</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Runtime Smoke (Model Selection)</h2>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="runtimeUserId">userId</label>
+                    <input id="runtimeUserId" type="text" value="phase2_user_001" />
+                </div>
+                <div class="field">
+                    <label for="runtimeChannel">channel</label>
+                    <select id="runtimeChannel">
+                        <option value="webhook" selected>webhook</option>
+                        <option value="web">web</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label for="runtimeMessage">message</label>
+                <textarea id="runtimeMessage">Please summarize Swedish residence permit renewal requirements.</textarea>
+            </div>
+            <div class="btn-row">
+                <button class="secondary" onclick="runRuntimeSmoke()">POST /webhook/ai-agent (check modelUsed)</button>
+            </div>
+        </section>
+
+        <section class="card" style="grid-column: 1 / -1;">
+            <h2>Response Output</h2>
+            <div class="result" id="output">{}</div>
+        </section>
+    </main>
+
+    <script>
+        function tenantHeaders() {
+            return {
+                "X-Tenant-Id": document.getElementById("tenantId").value.trim() || "public",
+                "X-Workspace-Id": document.getElementById("workspaceId").value.trim() || "default"
+            };
+        }
+
+        function adminHeaders(includeJson) {
+            const headers = tenantHeaders();
+            const key = document.getElementById("adminKey").value.trim();
+            if (key) {
+                headers["X-Admin-Key"] = key;
+            }
+            if (includeJson) {
+                headers["Content-Type"] = "application/json";
+            }
+            return headers;
+        }
+
+        function apiHeaders(includeJson) {
+            const headers = tenantHeaders();
+            const key = document.getElementById("apiKey").value.trim();
+            if (key) {
+                headers["X-API-Key"] = key;
+            }
+            if (includeJson) {
+                headers["Content-Type"] = "application/json";
+            }
+            return headers;
+        }
+
+        function setStatus(message, isError) {
+            const el = document.getElementById("statusText");
+            el.textContent = message;
+            el.style.color = isError ? "#ff8f8f" : "#8fb3d1";
+        }
+
+        function printOutput(data) {
+            document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function callApi(method, url, headers, body) {
+            const init = { method, headers: headers || {} };
+            if (body) {
+                init.body = JSON.stringify(body);
+            }
+
+            const response = await fetch(url, init);
+            const contentType = response.headers.get("content-type") || "";
+            let payload;
+
+            if (contentType.includes("application/json")) {
+                payload = await response.json();
+            } else {
+                payload = { raw: await response.text() };
+            }
+
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}: ${JSON.stringify(payload)}`);
+            }
+
+            return payload;
+        }
+
+        function workspacePathId() {
+            return document.getElementById("pathWorkspaceId").value.trim() || "default";
+        }
+
+        async function fetchProviderModels() {
+            setStatus("Fetching provider model catalog...", false);
+            try {
+                const provider = document.getElementById("catalogProvider").value;
+                const result = await callApi(
+                    "POST",
+                    `/admin/llm/providers/${encodeURIComponent(provider)}/models`,
+                    adminHeaders(true),
+                    {
+                        apiKey: document.getElementById("catalogApiKey").value.trim(),
+                        forceRefresh: document.getElementById("forceRefresh").checked
+                    }
+                );
+                printOutput(result);
+                setStatus("Provider models loaded.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Provider model fetch failed.", true);
+            }
+        }
+
+        async function saveWorkspaceConfig() {
+            setStatus("Saving workspace LLM config...", false);
+            try {
+                const pathWorkspace = workspacePathId();
+                const result = await callApi(
+                    "POST",
+                    `/admin/workspaces/${encodeURIComponent(pathWorkspace)}/llm-config`,
+                    adminHeaders(true),
+                    {
+                        provider: document.getElementById("configProvider").value,
+                        model: document.getElementById("configModel").value.trim(),
+                        apiKey: document.getElementById("configApiKey").value.trim()
+                    }
+                );
+                printOutput(result);
+                setStatus("Workspace config saved.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Workspace config save failed.", true);
+            }
+        }
+
+        async function loadWorkspaceConfig() {
+            setStatus("Loading workspace LLM config...", false);
+            try {
+                const pathWorkspace = workspacePathId();
+                const result = await callApi(
+                    "GET",
+                    `/admin/workspaces/${encodeURIComponent(pathWorkspace)}/llm-config`,
+                    adminHeaders(false)
+                );
+                printOutput(result);
+                setStatus("Workspace config loaded.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Workspace config load failed.", true);
+            }
+        }
+
+        async function runRuntimeSmoke() {
+            setStatus("Running runtime smoke call...", false);
+            try {
+                const result = await callApi(
+                    "POST",
+                    "/webhook/ai-agent",
+                    apiHeaders(true),
+                    {
+                        message: document.getElementById("runtimeMessage").value.trim(),
+                        userId: document.getElementById("runtimeUserId").value.trim(),
+                        channel: document.getElementById("runtimeChannel").value,
+                        tenantId: document.getElementById("tenantId").value.trim() || "public",
+                        workspaceId: document.getElementById("workspaceId").value.trim() || "default"
+                    }
+                );
+                printOutput({
+                    status: result.status,
+                    modelUsed: result.modelUsed,
+                    retrievalMode: result.retrievalMode,
+                    sessionId: result.sessionId,
+                    messagePreview: (result.message || "").slice(0, 220)
+                });
+                setStatus("Runtime smoke succeeded. Check modelUsed in output.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Runtime smoke failed.", true);
+            }
+        }
+    </script>
+</body>
+</html>

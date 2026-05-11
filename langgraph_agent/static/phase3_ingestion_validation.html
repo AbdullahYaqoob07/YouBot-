@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phase 3 Ingestion Validation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: #16213e;
+            border-bottom: 2px solid #0f3460;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.3rem;
+        }
+
+        .nav {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            background: #0f3460;
+            color: #00d9ff;
+            text-decoration: none;
+            padding: 0.45rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .nav a:hover {
+            background: #1a4a7a;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .card {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 10px;
+            padding: 1rem;
+        }
+
+        .card h2 {
+            color: #00d9ff;
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .field label {
+            color: #a4b5c6;
+            font-size: 0.85rem;
+        }
+
+        .field input,
+        .field textarea,
+        .field select {
+            width: 100%;
+            border: 1px solid #2f4d69;
+            border-radius: 6px;
+            padding: 0.6rem;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 0.95rem;
+        }
+
+        .field textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.6rem;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.2rem;
+        }
+
+        button {
+            border: 0;
+            border-radius: 6px;
+            padding: 0.55rem 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: #00d9ff;
+            color: #10263d;
+        }
+
+        button.secondary {
+            background: #2f4d69;
+            color: #dbe7f3;
+        }
+
+        button:hover {
+            filter: brightness(1.08);
+        }
+
+        .toggle-line {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.5rem 0 0.9rem;
+            color: #b6cbe0;
+            font-size: 0.9rem;
+        }
+
+        .status {
+            font-size: 0.85rem;
+            color: #8fb3d1;
+            margin: 0.5rem 0 0.75rem;
+        }
+
+        .result {
+            background: #101827;
+            border: 1px solid #2f4d69;
+            border-radius: 8px;
+            padding: 0.8rem;
+            min-height: 220px;
+            overflow: auto;
+            font-family: Consolas, monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            line-height: 1.35;
+        }
+
+        @media (max-width: 700px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Phase 3 Ingestion Validation</h1>
+        <nav class="nav">
+            <a href="/">Chat Console</a>
+            <a href="/admin">Admin Dashboard</a>
+            <a href="/phase1/tenant-validation">Phase 1 Validator</a>
+            <a href="/phase2/llm-validation">Phase 2 Validator</a>
+            <a href="/phase3/retrieval-validation">Retrieval Validator</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h2>Request Context</h2>
+            <div class="field">
+                <label for="adminKey">X-Admin-Key</label>
+                <input id="adminKey" type="text" placeholder="Enter admin API key" />
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="tenantId">X-Tenant-Id</label>
+                    <input id="tenantId" type="text" value="public" />
+                </div>
+                <div class="field">
+                    <label for="workspaceId">X-Workspace-Id</label>
+                    <input id="workspaceId" type="text" value="default" />
+                </div>
+            </div>
+            <p class="status" id="statusText">Ready.</p>
+        </section>
+
+        <section class="card">
+            <h2>Create Knowledge Source</h2>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="sourceName">sourceName</label>
+                    <input id="sourceName" type="text" value="phase3_validation_source" />
+                </div>
+                <div class="field">
+                    <label for="sourceType">sourceType</label>
+                    <select id="sourceType" onchange="syncSourceType()">
+                        <option value="csv" selected>csv</option>
+                        <option value="web">web</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label for="sourceUri">sourceUri (required for web)</label>
+                <input id="sourceUri" type="text" placeholder="https://example.com/article" />
+            </div>
+            <div class="field">
+                <label for="createdBy">createdBy</label>
+                <input id="createdBy" type="text" value="phase3_validator" />
+            </div>
+            <div class="field">
+                <label for="csvContent">sourceConfig.csv_content (required for csv)</label>
+                <textarea id="csvContent">question,answer,category,language
+How do I renew my permit?,Apply before expiry and provide passport copy.,permits,English
+Can I relocate with family?,Yes, family reunification options are available.,family,English</textarea>
+            </div>
+            <div class="btn-row">
+                <button onclick="createSource()">POST /admin/knowledge-sources</button>
+                <button class="secondary" onclick="listSources()">GET /admin/knowledge-sources</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Ingestion Jobs</h2>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="sourceId">sourceId</label>
+                    <input id="sourceId" type="number" placeholder="Paste source id" />
+                </div>
+                <div class="field">
+                    <label for="triggerType">triggerType</label>
+                    <select id="triggerType">
+                        <option value="manual" selected>manual</option>
+                        <option value="scheduled">scheduled</option>
+                        <option value="webhook">webhook</option>
+                    </select>
+                </div>
+            </div>
+            <div class="toggle-line">
+                <input id="runNow" type="checkbox" checked />
+                <label for="runNow">runNow</label>
+            </div>
+            <div class="btn-row">
+                <button onclick="createJob()">POST /admin/ingestion-jobs</button>
+                <button class="secondary" onclick="listJobs()">GET /admin/ingestion-jobs</button>
+            </div>
+            <div class="field" style="margin-top: 0.9rem;">
+                <label for="jobId">job_id (for detail)</label>
+                <input id="jobId" type="number" placeholder="Enter job id" />
+            </div>
+            <div class="btn-row">
+                <button class="secondary" onclick="getJobDetail()">GET /admin/ingestion-jobs/{job_id}</button>
+            </div>
+        </section>
+
+        <section class="card" style="grid-column: 1 / -1;">
+            <h2>Response Output</h2>
+            <div class="result" id="output">{}</div>
+        </section>
+    </main>
+
+    <script>
+        function contextHeaders(includeJson) {
+            const headers = {
+                "X-Admin-Key": document.getElementById("adminKey").value.trim(),
+                "X-Tenant-Id": document.getElementById("tenantId").value.trim() || "public",
+                "X-Workspace-Id": document.getElementById("workspaceId").value.trim() || "default"
+            };
+            if (includeJson) {
+                headers["Content-Type"] = "application/json";
+            }
+            return headers;
+        }
+
+        function setStatus(message, isError) {
+            const el = document.getElementById("statusText");
+            el.textContent = message;
+            el.style.color = isError ? "#ff8f8f" : "#8fb3d1";
+        }
+
+        function printOutput(data) {
+            document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function callApi(method, url, body) {
+            const init = {
+                method,
+                headers: contextHeaders(Boolean(body))
+            };
+            if (body) {
+                init.body = JSON.stringify(body);
+            }
+
+            const response = await fetch(url, init);
+            const contentType = response.headers.get("content-type") || "";
+            let payload;
+
+            if (contentType.includes("application/json")) {
+                payload = await response.json();
+            } else {
+                payload = { raw: await response.text() };
+            }
+
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}: ${JSON.stringify(payload)}`);
+            }
+
+            return payload;
+        }
+
+        function syncSourceType() {
+            const sourceType = document.getElementById("sourceType").value;
+            const uri = document.getElementById("sourceUri");
+            const csv = document.getElementById("csvContent");
+
+            if (sourceType === "web") {
+                uri.disabled = false;
+                csv.disabled = true;
+                if (!uri.value.trim()) {
+                    uri.value = "https://example.com";
+                }
+            } else {
+                uri.disabled = true;
+                csv.disabled = false;
+            }
+        }
+
+        function sourcePayload() {
+            const sourceType = document.getElementById("sourceType").value;
+            const payload = {
+                sourceName: document.getElementById("sourceName").value.trim(),
+                sourceType,
+                createdBy: document.getElementById("createdBy").value.trim() || "phase3_validator"
+            };
+
+            if (sourceType === "web") {
+                payload.sourceUri = document.getElementById("sourceUri").value.trim();
+            } else {
+                payload.sourceConfig = {
+                    csv_content: document.getElementById("csvContent").value
+                };
+            }
+
+            return payload;
+        }
+
+        async function createSource() {
+            setStatus("Creating knowledge source...", false);
+            try {
+                const result = await callApi("POST", "/admin/knowledge-sources", sourcePayload());
+                printOutput(result);
+                if (result && result.source && result.source.id) {
+                    document.getElementById("sourceId").value = String(result.source.id);
+                }
+                setStatus("Knowledge source created.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Knowledge source creation failed.", true);
+            }
+        }
+
+        async function listSources() {
+            setStatus("Loading knowledge sources...", false);
+            try {
+                const result = await callApi("GET", "/admin/knowledge-sources?limit=50");
+                printOutput(result);
+                setStatus("Knowledge sources loaded.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Knowledge source listing failed.", true);
+            }
+        }
+
+        async function createJob() {
+            setStatus("Creating ingestion job...", false);
+            try {
+                const sourceId = Number(document.getElementById("sourceId").value);
+                const payload = {
+                    sourceId,
+                    createdBy: document.getElementById("createdBy").value.trim() || "phase3_validator",
+                    triggerType: document.getElementById("triggerType").value,
+                    runNow: document.getElementById("runNow").checked
+                };
+                const result = await callApi("POST", "/admin/ingestion-jobs", payload);
+                printOutput(result);
+                if (result && result.job && result.job.id) {
+                    document.getElementById("jobId").value = String(result.job.id);
+                }
+                setStatus("Ingestion job created.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Ingestion job creation failed.", true);
+            }
+        }
+
+        async function listJobs() {
+            setStatus("Loading ingestion jobs...", false);
+            try {
+                const result = await callApi("GET", "/admin/ingestion-jobs?limit=50");
+                printOutput(result);
+                setStatus("Ingestion jobs loaded.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Ingestion job listing failed.", true);
+            }
+        }
+
+        async function getJobDetail() {
+            setStatus("Loading ingestion job detail...", false);
+            try {
+                const jobId = Number(document.getElementById("jobId").value);
+                const result = await callApi("GET", `/admin/ingestion-jobs/${jobId}`);
+                printOutput(result);
+                setStatus("Ingestion job detail loaded.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Ingestion job detail failed.", true);
+            }
+        }
+
+        syncSourceType();
+    </script>
+</body>
+</html>

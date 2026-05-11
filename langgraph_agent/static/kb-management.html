@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KB Management - Sweden Relocators AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #16213e;
+            padding: 1rem 2rem;
+            border-bottom: 2px solid #0f3460;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+        }
+        
+        .back-btn {
+            background: #0f3460;
+            color: #00d9ff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        
+        .back-btn:hover {
+            background: #1a4a7a;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        
+        .config-panel {
+            background: #16213e;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .config-panel label {
+            color: #888;
+        }
+        
+        .config-panel input {
+            padding: 0.5rem;
+            border: 1px solid #0f3460;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #eee;
+            width: 300px;
+        }
+        
+        .search-bar {
+            background: #16213e;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
+        
+        .search-bar input {
+            flex: 1;
+            min-width: 180px;
+            padding: 0.75rem;
+            border: 1px solid #0f3460;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 1rem;
+        }
+        
+        .search-bar button {
+            padding: 0.65rem 1.1rem;
+            background: #00d9ff;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        
+        .search-bar button:hover {
+            background: #00c3e6;
+        }
+        
+        .kb-items {
+            display: grid;
+            gap: 1rem;
+        }
+        
+        .kb-item {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 1.5rem;
+            transition: all 0.3s;
+        }
+        
+        .kb-item:hover {
+            border-color: #00d9ff;
+            transform: translateY(-2px);
+        }
+        
+        .kb-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+        
+        .kb-item-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .kb-item-badge {
+            background: #0f3460;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+        }
+        
+        .kb-item-badge.admin {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+        
+        .kb-item-question {
+            font-size: 1.1rem;
+            color: #00d9ff;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .kb-item-answer {
+            color: #ccc;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+        
+        .kb-item-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 1rem;
+            border-top: 1px solid #0f3460;
+        }
+        
+        .kb-item-info {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .remove-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 0.5rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .remove-btn:hover {
+            background: #ff5252;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 4rem;
+            color: #888;
+        }
+        
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            color: white;
+            animation: slideIn 0.3s;
+            z-index: 1000;
+        }
+        
+        .toast.success { background: #00ff88; color: #000; }
+        .toast.error { background: #ff6b6b; }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #888;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: #16213e;
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .modal-header h2 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+        }
+        
+        .close-btn:hover {
+            color: #fff;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #00d9ff;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #0f3460;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+        
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+        
+        .form-actions button {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        
+        .btn-primary {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+        
+        .btn-primary:hover {
+            background: #00b8d4;
+        }
+        
+        .btn-secondary {
+            background: #0f3460;
+            color: #888;
+        }
+        
+        .btn-secondary:hover {
+            background: #1a4a7a;
+            color: #eee;
+        }
+
+        /* CSV Import Modal */
+        .csv-modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1001; align-items: center; justify-content: center;
+        }
+        .csv-modal.active { display: flex; }
+        .csv-modal-content {
+            background: #16213e;
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 540px;
+            width: 90%;
+            border: 2px solid #00ff88;
+        }
+        .csv-modal-content h2 { color: #00ff88; margin-bottom: 1rem; font-size: 1.2rem; }
+        .csv-drop-zone {
+            border: 2px dashed #0f3460;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 1rem;
+        }
+        .csv-drop-zone.drag-over { border-color: #00ff88; background: rgba(0,255,136,0.05); }
+        .csv-drop-zone p { color: #888; font-size: 0.9rem; margin: 0.4rem 0; }
+        .csv-drop-zone .csv-fname { color: #00ff88; font-weight: 600; margin-top: 0.5rem; }
+        .csv-hint {
+            background: #1a1a2e;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 1rem;
+            font-family: monospace;
+            line-height: 1.7;
+        }
+        .csv-hint strong { color: #00d9ff; }
+        .csv-result {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            display: none;
+        }
+        .csv-result.visible { display: block; }
+        .csv-result .ok { color: #00ff88; }
+        .csv-result .err { color: #ff6b6b; }
+        .csv-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem; }
+
+        /* Newly added item highlight */
+        .kb-item.newly-added {
+            border-color: #00ff88 !important;
+            box-shadow: 0 0 12px rgba(0,255,136,0.25);
+        }
+        .badge-new {
+            background: #00ff88;
+            color: #000;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.15rem 0.5rem;
+            border-radius: 8px;
+            animation: pulse-new 1.5s infinite;
+        }
+        @keyframes pulse-new {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .edit-btn {
+            background: #ffa500;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 0.5rem;
+        }
+        
+        .edit-btn:hover {
+            background: #ff8c00;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 Knowledge Base Management</h1>
+        <a href="/admin" class="back-btn">← Back to Dashboard</a>
+    </div>
+    
+    <div class="container">
+        <div class="config-panel">
+            <label>Admin Key:</label>
+            <input type="password" id="admin-key" placeholder="Enter admin API key" onkeydown="if(event.key==='Enter') loadAllKBItems()">
+            <label>Admin ID:</label>
+            <input type="text" id="admin-id" placeholder="Your admin ID" value="admin_default">
+            <button onclick="loadAllKBItems()" style="background:#00d9ff;color:#1a1a2e;padding:0.5rem 1.2rem;border:none;border-radius:5px;cursor:pointer;font-weight:600;">🔄 Load Items</button>
+        </div>
+        
+        <div class="search-bar">
+            <input type="text" id="search-input" placeholder="Search KB items by question or answer...">
+            <button onclick="searchKB()">🔍 Search</button>
+            <button onclick="loadAllKBItems()" style="background: #0f3460; color: #00d9ff;">📋 View All</button>
+            <button onclick="openAddModal()" style="background: #00ff88; color: #1a1a2e;">➕ Add New Entry</button>
+            <button onclick="openCSVModal()" style="background: #00d9ff; color: #1a1a2e;">📥 Import CSV</button>
+        </div>
+
+        <div id="kb-count-bar" style="color:#888;font-size:0.9rem;margin-bottom:1rem;display:none;">
+            Showing <strong id="kb-count">0</strong> KB entries
+        </div>
+        
+        <div id="kb-items" class="kb-items">
+            <div class="empty-state" style="color:#888;">
+                <p>🔑 Enter your admin key above and click <strong style="color:#00d9ff;">Load Items</strong> to view KB entries.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- CSV Import Modal -->
+    <div id="csv-modal" class="csv-modal">
+        <div class="csv-modal-content">
+            <h2>📥 Import KB from CSV</h2>
+            <div class="csv-hint">
+                <strong>Required columns:</strong> question, answer<br>
+                <strong>Optional columns:</strong> category, language<br>
+                <strong>Example row:</strong><br>
+                question,answer,category,language<br>
+                "How to apply for visa?","Visit migrationsverket.se",visa,English
+            </div>
+            <div class="csv-drop-zone" id="csv-drop-zone" onclick="document.getElementById('csv-file-input').click()">
+                <p>📂 Click to browse or drag &amp; drop a CSV file here</p>
+                <p class="csv-fname" id="csv-fname"></p>
+                <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVFile(this)">
+            </div>
+            <div class="csv-result" id="csv-result"></div>
+            <div class="csv-actions">
+                <button class="btn-secondary" onclick="closeCSVModal()">Close</button>
+                <button class="btn-primary" id="csv-import-btn" onclick="submitCSV()" disabled style="background:#00ff88;color:#1a1a2e;">📥 Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>✏️ Edit KB Entry</h2>
+                <button class="close-btn" onclick="closeEditModal()">×</button>
+            </div>
+            
+            <div class="form-group">
+                <label>FAQ ID (Read-only)</label>
+                <input type="text" id="edit-faq-id" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label>Question</label>
+                <textarea id="edit-question" placeholder="Enter question text..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Answer</label>
+                <textarea id="edit-answer" placeholder="Enter answer text..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Category</label>
+                <select id="edit-category">
+                    <option value="general">General</option>
+                    <option value="visa">Visa</option>
+                    <option value="work_permit">Work Permit</option>
+                    <option value="housing">Housing</option>
+                    <option value="banking">Banking</option>
+                    <option value="personal_number">Personal Number</option>
+                    <option value="culture">Culture & Integration</option>
+                    <option value="documentation">Documentation</option>
+                    <option value="cost_of_living">Cost of Living</option>
+                    <option value="jobs">Jobs & Employment</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            
+            <div class="form-actions">
+                <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button class="btn-primary" onclick="submitEdit()">💾 Save Changes</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add New Modal -->
+    <div id="add-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>➕ Add New KB Entry</h2>
+                <button class="close-btn" onclick="closeAddModal()">×</button>
+            </div>
+            
+            <div class="form-group">
+                <label>Question *</label>
+                <textarea id="add-question" placeholder="Enter question text..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Answer *</label>
+                <textarea id="add-answer" placeholder="Enter answer text..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Category</label>
+                <select id="add-category">
+                    <option value="general">General</option>
+                    <option value="visa">Visa</option>
+                    <option value="work_permit">Work Permit</option>
+                    <option value="housing">Housing</option>
+                    <option value="banking">Banking</option>
+                    <option value="personal_number">Personal Number</option>
+                    <option value="culture">Culture & Integration</option>
+                    <option value="documentation">Documentation</option>
+                    <option value="cost_of_living">Cost of Living</option>
+                    <option value="jobs">Jobs & Employment</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Language</label>
+                <select id="add-language">
+                    <option value="English">English</option>
+                    <option value="Swedish">Swedish</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="French">French</option>
+                    <option value="German">German</option>
+                    <option value="Arabic">Arabic</option>
+                    <option value="Urdu">Urdu</option>
+                    <option value="Hindi">Hindi</option>
+                </select>
+            </div>
+            
+            <div class="form-actions">
+                <button class="btn-secondary" onclick="closeAddModal()">Cancel</button>
+                <button class="btn-primary" onclick="submitAdd()">💾 Add to KB</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = window.location.origin;
+        let currentEditingId = null;
+        // IDs added during this session — shown with 🆕 badge
+        const newlyAddedIds = new Set();
+        
+        function getAdminKey() {
+            return document.getElementById('admin-key').value;
+        }
+        
+        function getAdminId() {
+            return document.getElementById('admin-id').value || 'admin_default';
+        }
+        
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+        
+        async function loadAllKBItems() {
+            const key = getAdminKey();
+            if (!key) {
+                showToast('❌ Please enter your admin key first', 'error');
+                document.getElementById('admin-key').focus();
+                return;
+            }
+            const container = document.getElementById('kb-items');
+            container.innerHTML = '<div class="loading">⏳ Loading KB items...</div>';
+            document.getElementById('kb-count-bar').style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE}/kb-curation/items?limit=200`, {
+                    headers: { 'X-Admin-Key': key }
+                });
+                
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayKBItems(data.items || []);
+                
+            } catch (error) {
+                container.innerHTML = `<div class="empty-state">
+                    <p>❌ Error: ${error.message}</p>
+                    <p style="margin-top:1rem;font-size:0.9rem;">Check your admin key and try again.</p>
+                </div>`;
+            }
+        }
+        
+        function displayKBItems(items) {
+            const container = document.getElementById('kb-items');
+            const countBar = document.getElementById('kb-count-bar');
+            
+            if (items.length === 0) {
+                countBar.style.display = 'none';
+                container.innerHTML = `<div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    <p>No KB items found</p>
+                </div>`;
+                return;
+            }
+
+            // Show count
+            document.getElementById('kb-count').textContent = items.length;
+            countBar.style.display = 'block';
+            
+            container.innerHTML = items.map((item, idx) => {
+                const question = item.user_question || item.question || '';
+                const answer   = item.admin_response || item.answer || '';
+                const faqId    = item.kb_document_id || item.faq_id || 'N/A';
+                const addedAt  = item.added_to_kb_at || item.created_at;
+                const source   = faqId.includes('csv') ? '📥 CSV' : '✍️ Manual';
+                const lang     = item.user_language || 'English';
+                const isNew    = newlyAddedIds.has(item.id);
+                return `
+                <div class="kb-item${isNew ? ' newly-added' : ''}" id="kb-item-${item.id}">
+                    <div class="kb-item-header">
+                        <div class="kb-item-meta">
+                            <span style="color:#888;font-size:0.82rem;">#${idx + 1}</span>
+                            ${isNew ? '<span class="badge-new">🆕 NEW</span>' : ''}
+                            <span class="kb-item-badge ${item.source === 'admin_curated' ? 'admin' : ''}">${item.category || 'general'}</span>
+                            <span class="kb-item-badge">${lang}</span>
+                            <span class="kb-item-badge" style="background:#1a1a2e;color:#888;">${source}</span>
+                        </div>
+                    </div>
+                    <div class="kb-item-question">❓ ${escapeHtml(question)}</div>
+                    <div class="kb-item-answer">${escapeHtml(answer)}</div>
+                    <div class="kb-item-footer">
+                        <div class="kb-item-info">
+                            <div>FAQ ID: <code style="color:#00d9ff;font-size:0.8rem;">${faqId}</code></div>
+                            <div>Added: ${addedAt ? new Date(addedAt).toLocaleString() : 'N/A'} &nbsp;|&nbsp; By: ${item.added_by_admin || 'Unknown'}</div>
+                        </div>
+                        <div>
+                            <button class="edit-btn" onclick="openEditModal(${item.id}, '${escapeJs(question)}', '${escapeJs(answer)}', '${item.category || 'general'}', '${faqId}')">✏️ Edit</button>
+                            <button class="remove-btn" onclick="removeFromKB(${item.id}, '${faqId}')">🗑️ Delete</button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+        
+        async function removeFromKB(questionId, faqId) {
+            if (!confirm(`Remove this Q&A from the knowledge base?\n\nFAQ ID: ${faqId}\n\nThis action will delete it from Pinecone but keep the database record for audit.`)) {
+                return;
+            }
+            
+            const reason = prompt('Reason for removal (optional):');
+            
+            try {
+                const response = await fetch(`${API_BASE}/kb-curation/remove-from-kb/${questionId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        reason: reason || 'Removed via KB Management'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`✅ Removed from KB: ${faqId}`, 'success');
+                    loadAllKBItems(); // Reload list
+                } else {
+                    throw new Error(data.detail || 'Failed to remove from KB');
+                }
+                
+            } catch (error) {
+                console.error('Error removing from KB:', error);
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = String(text || '');
+            return div.innerHTML;
+        }
+
+        // Safe escape for inline JS string attributes (single-quote safe)
+        function escapeJs(text) {
+            return String(text || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ').replace(/\r/g, '');
+        }
+        
+        function openEditModal(questionId, question, answer, category, faqId) {
+            currentEditingId = questionId;
+            
+            // Decode HTML entities
+            const decodeHtml = (html) => {
+                const txt = document.createElement('textarea');
+                txt.innerHTML = html;
+                return txt.value;
+            };
+            
+            document.getElementById('edit-faq-id').value = faqId;
+            document.getElementById('edit-question').value = decodeHtml(question);
+            document.getElementById('edit-answer').value = decodeHtml(answer);
+            document.getElementById('edit-category').value = category || 'general';
+            
+            document.getElementById('edit-modal').classList.add('active');
+        }
+        
+        function closeEditModal() {
+            document.getElementById('edit-modal').classList.remove('active');
+            currentEditingId = null;
+        }
+        
+        async function submitEdit() {
+            if (!currentEditingId) {
+                showToast('❌ No item selected for editing', 'error');
+                return;
+            }
+            
+            const question = document.getElementById('edit-question').value.trim();
+            const answer = document.getElementById('edit-answer').value.trim();
+            const category = document.getElementById('edit-category').value;
+            
+            if (!question || !answer) {
+                showToast('❌ Question and answer are required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/kb-curation/update-kb/${currentEditingId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        question: question,
+                        answer: answer,
+                        category: category
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`✅ ${data.message}`, 'success');
+                    closeEditModal();
+                    loadAllKBItems(); // Reload list
+                } else {
+                    throw new Error(data.detail || 'Failed to update KB entry');
+                }
+                
+            } catch (error) {
+                console.error('Error updating KB:', error);
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Close modal when clicking outside
+        document.getElementById('edit-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeEditModal();
+            }
+        });
+        
+        function openAddModal() {
+            document.getElementById('add-question').value = '';
+            document.getElementById('add-answer').value = '';
+            document.getElementById('add-category').value = 'general';
+            document.getElementById('add-language').value = 'English';
+            document.getElementById('add-modal').classList.add('active');
+        }
+        
+        function closeAddModal() {
+            document.getElementById('add-modal').classList.remove('active');
+        }
+        
+        async function submitAdd() {
+            const question = document.getElementById('add-question').value.trim();
+            const answer = document.getElementById('add-answer').value.trim();
+            const category = document.getElementById('add-category').value;
+            const language = document.getElementById('add-language').value;
+            
+            if (!question || !answer) {
+                showToast('❌ Question and answer are required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/kb-curation/manual-add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getAdminKey()
+                    },
+                    body: JSON.stringify({
+                        admin_id: getAdminId(),
+                        question: question,
+                        answer: answer,
+                        category: category,
+                        language: language
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`✅ ${data.message} (FAQ ID: ${data.faq_id})`, 'success');
+                    // Track this new entry so it gets highlighted
+                    if (data.question_id) newlyAddedIds.add(data.question_id);
+                    closeAddModal();
+                    await loadAllKBItems();
+                    // Scroll to the list
+                    document.getElementById('kb-items').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else {
+                    throw new Error(data.detail || 'Failed to add KB entry');
+                }
+                
+            } catch (error) {
+                console.error('Error adding to KB:', error);
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Close add modal when clicking outside
+        document.getElementById('add-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeAddModal();
+            }
+        });
+
+        // ── CSV IMPORT ──────────────────────────────────────────
+        let csvFile = null;
+
+        function openCSVModal() {
+            document.getElementById('csv-modal').classList.add('active');
+        }
+
+        function closeCSVModal() {
+            document.getElementById('csv-modal').classList.remove('active');
+            csvFile = null;
+            document.getElementById('csv-fname').textContent = '';
+            document.getElementById('csv-import-btn').disabled = true;
+            document.getElementById('csv-result').classList.remove('visible');
+            document.getElementById('csv-result').innerHTML = '';
+            document.getElementById('csv-file-input').value = '';
+        }
+
+        document.getElementById('csv-modal').addEventListener('click', function(e) {
+            if (e.target === this) closeCSVModal();
+        });
+
+        function handleCSVFile(input) {
+            csvFile = input.files[0] || null;
+            document.getElementById('csv-fname').textContent = csvFile ? csvFile.name : '';
+            document.getElementById('csv-import-btn').disabled = !csvFile;
+            document.getElementById('csv-result').classList.remove('visible');
+        }
+
+        // Drag & drop
+        const csvDrop = document.getElementById('csv-drop-zone');
+        csvDrop.addEventListener('dragover', e => { e.preventDefault(); csvDrop.classList.add('drag-over'); });
+        csvDrop.addEventListener('dragleave', () => csvDrop.classList.remove('drag-over'));
+        csvDrop.addEventListener('drop', e => {
+            e.preventDefault();
+            csvDrop.classList.remove('drag-over');
+            const f = e.dataTransfer.files[0];
+            if (f && f.name.toLowerCase().endsWith('.csv')) {
+                csvFile = f;
+                document.getElementById('csv-fname').textContent = f.name;
+                document.getElementById('csv-import-btn').disabled = false;
+                document.getElementById('csv-result').classList.remove('visible');
+            } else {
+                showToast('Please drop a .csv file', 'error');
+            }
+        });
+
+        async function submitCSV() {
+            if (!csvFile) return;
+            const btn = document.getElementById('csv-import-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Importing...';
+            const resultBox = document.getElementById('csv-result');
+            resultBox.classList.remove('visible');
+
+            try {
+                const form = new FormData();
+                form.append('file', csvFile);
+
+                const res = await fetch(
+                    `${API_BASE}/kb-curation/csv-import?admin_id=${encodeURIComponent(getAdminId())}`,
+                    { method: 'POST', headers: { 'X-Admin-Key': getAdminKey() }, body: form }
+                );
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Import failed');
+
+                const s = data.summary;
+                let html = `<div class="ok">✅ <strong>${s.success} of ${s.total}</strong> rows imported successfully.</div>`;
+                if (s.failed > 0) {
+                    html += `<div class="err" style="margin-top:0.5rem;">❌ ${s.failed} row(s) failed:</div>`;
+                    html += `<ul style="margin:0.4rem 0 0 1rem;color:#ff6b6b;font-size:0.78rem;">`;
+                    s.errors.forEach(e => { html += `<li>${escapeHtml(e)}</li>`; });
+                    html += `</ul>`;
+                }
+                resultBox.innerHTML = html;
+                resultBox.classList.add('visible');
+                if (s.success > 0) {
+                    showToast(`Imported ${s.success} KB entries`, 'success');
+                    // Track newly added IDs for highlight
+                    if (data.summary.added_ids) data.summary.added_ids.forEach(id => newlyAddedIds.add(id));
+                    // Close modal, reload list and scroll to it
+                    setTimeout(async () => {
+                        closeCSVModal();
+                        await loadAllKBItems();
+                        document.getElementById('kb-items').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 1200);
+                }
+            } catch (err) {
+                resultBox.innerHTML = `<div class="err">❌ ${escapeHtml(err.message)}</div>`;
+                resultBox.classList.add('visible');
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📥 Import';
+            }
+        }
+        // ── END CSV IMPORT ───────────────────────────────────────
+
+        // Do NOT auto-load — wait for admin key entry
+    </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\ABDULLAH\\\\OneDrive\\\\Desktop\\\\YouBot\\\\langgraph_agent\")",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Sort-Object PSIsContainer -Descending)"
+    ]
+  }
+}

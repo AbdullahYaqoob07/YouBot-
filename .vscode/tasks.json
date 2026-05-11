@@ -1,0 +1,338 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "sanity-echo",
+			"type": "shell",
+			"command": "echo TASK_OK"
+		},
+		{
+			"label": "smoke-admin-file",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/smoke_admin_endpoints.py *> tools/last_smoke_output.txt"
+		},
+		{
+			"label": "convert-smoke-output",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; Get-Content tools/last_smoke_output.txt | Set-Content -Encoding utf8 tools/last_smoke_output_utf8.txt"
+		},
+		{
+			"label": "probe-health-file",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:5678/health' -UseBasicParsing -TimeoutSec 8; \"STATUS=$($r.StatusCode)\" | Set-Content -Encoding utf8 tools/health_probe.txt } catch { \"STATUS=DOWN`n$($_.Exception.Message)\" | Set-Content -Encoding utf8 tools/health_probe.txt }"
+		},
+		{
+			"label": "probe-health-file-2",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:5678/health' -UseBasicParsing -TimeoutSec 8; ('STATUS=' + $r.StatusCode) | Set-Content -Encoding utf8 tools/health_probe.txt } catch { $msg = 'STATUS=DOWN'; if ($_.Exception -and $_.Exception.Message) { $msg = $msg + \"`n\" + $_.Exception.Message }; $msg | Set-Content -Encoding utf8 tools/health_probe.txt }"
+		},
+		{
+			"label": "probe-health-file-3",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:5678/health' -UseBasicParsing -TimeoutSec 8; ('STATUS=' + $r.StatusCode) | Set-Content -Encoding utf8 tools/health_probe.txt } catch { 'STATUS=DOWN' | Set-Content -Encoding utf8 tools/health_probe.txt }"
+		},
+		{
+			"label": "smoke-admin-file-2",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/smoke_admin_endpoints.py | Out-File -FilePath tools/last_smoke_output.txt -Encoding utf8"
+		},
+		{
+			"label": "smoke-admin-file-3",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/smoke_admin_endpoints.py | Out-File -FilePath tools/last_smoke_output.txt -Encoding utf8"
+		},
+		{
+			"label": "probe-health-file-4",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:5678/health' -UseBasicParsing -TimeoutSec 8; ('STATUS=' + $r.StatusCode) | Set-Content -Encoding utf8 tools/health_probe.txt } catch { 'STATUS=DOWN' | Set-Content -Encoding utf8 tools/health_probe.txt }"
+		},
+		{
+			"label": "check-port-5678",
+			"type": "shell",
+			"command": "$conns = Get-NetTCPConnection -LocalPort 5678 -State Listen -ErrorAction SilentlyContinue; if ($null -eq $conns -or $conns.Count -eq 0) { 'LISTENING=NO' | Set-Content -Encoding utf8 langgraph_agent/tools/port_5678.txt } else { 'LISTENING=YES' | Set-Content -Encoding utf8 langgraph_agent/tools/port_5678.txt; $conns | Select-Object -Property LocalAddress,LocalPort,OwningProcess | ConvertTo-Json | Add-Content langgraph_agent/tools/port_5678.txt }"
+		},
+		{
+			"label": "inspect-process-21980",
+			"type": "shell",
+			"command": "$p = Get-CimInstance Win32_Process -Filter \"ProcessId=21980\"; if ($p) { \"PID=$($p.ProcessId)\" | Set-Content -Encoding utf8 langgraph_agent/tools/process_21980.txt; \"Name=$($p.Name)\" | Add-Content langgraph_agent/tools/process_21980.txt; \"CommandLine=$($p.CommandLine)\" | Add-Content langgraph_agent/tools/process_21980.txt } else { 'MISSING' | Set-Content -Encoding utf8 langgraph_agent/tools/process_21980.txt }"
+		},
+		{
+			"label": "inspect-process-21980-v2",
+			"type": "shell",
+			"command": "$p = Get-CimInstance Win32_Process -Filter 'ProcessId=21980'; if ($p) { $p | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json | Set-Content -Encoding utf8 langgraph_agent/tools/process_21980.txt } else { 'MISSING' | Set-Content -Encoding utf8 langgraph_agent/tools/process_21980.txt }"
+		},
+		{
+			"label": "probe-health-latency",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; $sw=[System.Diagnostics.Stopwatch]::StartNew(); try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:5678/health' -UseBasicParsing -TimeoutSec 20; $sw.Stop(); ('STATUS=' + $r.StatusCode + ';MS=' + [int]$sw.ElapsedMilliseconds) | Set-Content -Encoding utf8 tools/health_probe.txt } catch { $sw.Stop(); ('STATUS=DOWN;MS=' + [int]$sw.ElapsedMilliseconds) | Set-Content -Encoding utf8 tools/health_probe.txt }"
+		},
+		{
+			"label": "bootstrap-phase3-verify",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/bootstrap_phase3_mysql_tables.py | Out-File -FilePath tools/bootstrap_phase3_output.txt -Encoding utf8"
+		},
+		{
+			"label": "check-bootstrap-process",
+			"type": "shell",
+			"command": "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*bootstrap_phase3_mysql_tables.py*' } | Select-Object ProcessId,CommandLine | ConvertTo-Json | Set-Content -Encoding utf8 langgraph_agent/tools/bootstrap_proc.txt"
+		},
+		{
+			"label": "isolated-admin-smoke-run",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/isolated_admin_smoke.py | Out-File -FilePath tools/isolated_admin_smoke_output.txt -Encoding utf8"
+		},
+		{
+			"label": "check-isolated-smoke-proc",
+			"type": "shell",
+			"command": "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*isolated_admin_smoke.py*' } | Select-Object ProcessId,CommandLine | ConvertTo-Json | Out-File -FilePath langgraph_agent/tools/isolated_smoke_proc.txt -Encoding utf8"
+		},
+		{
+			"label": "direct-db-profile-check",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe -c \"import asyncio; from database.retrieval_modes import get_retrieval_profile; print(asyncio.run(get_retrieval_profile('public','default')))\""
+		},
+		{
+			"label": "probe-mysql-port",
+			"type": "shell",
+			"command": "$r = Test-NetConnection -ComputerName 127.0.0.1 -Port 3306; $r | Select-Object ComputerName,RemotePort,TcpTestSucceeded | Format-Table -AutoSize"
+		},
+		{
+			"label": "factory-kwargs-sanity",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe -c \"from llm.factory import _instantiate\nclass X:\n    def __init__(self, **kwargs):\n        self.kw=kwargs\nobj=_instantiate(X, model='m1', api_key='k1', temperature=0.0)\nprint(obj.kw)\""
+		},
+		{
+			"label": "factory-kwargs-sanity-2",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe -c \"from llm.factory import _instantiate; X=type('X',(object,),{'__init__':lambda self, **kwargs: setattr(self,'kw',kwargs)}); obj=_instantiate(X, model='m1', api_key='k1', temperature=0.0); print(obj.kw)\""
+		},
+		{
+			"label": "stdout-stderr-test",
+			"type": "shell",
+			"command": "Write-Output 'HELLO_STDOUT'; Write-Error 'HELLO_STDERR'"
+		},
+		{
+			"label": "factory-kwargs-to-file",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe -c \"from llm.factory import _instantiate; X=type('X',(object,),{'__init__':lambda self, **kwargs: setattr(self,'kw',kwargs)}); obj=_instantiate(X, model='m1', api_key='k1', temperature=0.0); open('tools/factory_sanity.txt','w',encoding='utf-8').write(str(obj.kw))\""
+		},
+		{
+			"label": "run-factory-sanity-script",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/factory_sanity.py"
+		},
+		{
+			"label": "isolated-admin-smoke-run-2",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/isolated_admin_smoke.py | Out-File -FilePath tools/isolated_admin_smoke_output.txt -Encoding utf8"
+		},
+		{
+			"label": "isolated-proc-dump",
+			"type": "shell",
+			"command": "$procs = Get-CimInstance Win32_Process -Filter 'Name=\"python.exe\"' | Where-Object { $_.CommandLine -like '*isolated_admin_smoke.py*' }; if ($procs) { $procs | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json | Set-Content -Encoding utf8 langgraph_agent/tools/isolated_proc_dump.txt } else { 'NONE' | Set-Content -Encoding utf8 langgraph_agent/tools/isolated_proc_dump.txt }"
+		},
+		{
+			"label": "run-write-ping",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/write_ping.py"
+		},
+		{
+			"label": "shell-write-test",
+			"type": "shell",
+			"command": "Set-Content -Encoding utf8 langgraph_agent/tools/shell_marker.txt 'ok-shell'"
+		},
+		{
+			"label": "smoke-admin-direct",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; c:/Users/ABDULLAH/OneDrive/Desktop/YouBot/.venv/Scripts/python.exe tools/smoke_admin_endpoints.py"
+		},
+		{
+			"label": "write-marker",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; Set-Content -Path .\\task_marker.txt -Value \"ok\"",
+			"isBackground": false
+		},
+		{
+			"label": "write-marker-cmd",
+			"type": "shell",
+			"command": "echo ok > langgraph_agent\\task_marker2.txt",
+			"isBackground": false
+		},
+		{
+			"label": "pytest-admin-delete-endpoints",
+			"type": "shell",
+			"command": "Set-Location langgraph_agent; ..\\.venv\\Scripts\\python.exe -m pytest tests/test_phase3_admin_endpoints.py -q",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-admin-delete-endpoints-2",
+			"type": "shell",
+			"command": "cd /d c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\langgraph_agent && c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\.venv\\Scripts\\python.exe -m pytest tests/test_phase3_admin_endpoints.py -q",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-delete-config-endpoints",
+			"type": "shell",
+			"command": "cd /d c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\langgraph_agent && c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\.venv\\Scripts\\python.exe -m pytest tests/test_phase3_admin_endpoints.py -k delete_configuration_endpoints -q",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-analytics-timezone",
+			"type": "shell",
+			"command": "cd /d c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\langgraph_agent && c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\.venv\\Scripts\\python.exe -m pytest tests/test_analytics_timezone.py -q",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-mcp-transport",
+			"type": "shell",
+			"command": "cd /d c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\langgraph_agent && c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\.venv\\Scripts\\python.exe -m pytest tests/test_mcp_transport.py -q",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-analytics-timezone-2",
+			"type": "shell",
+			"command": "cd /d c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\langgraph_agent && c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\.venv\\Scripts\\python.exe -m pytest tests/test_analytics_timezone.py -q",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-mcp-transport-2",
+			"type": "shell",
+			"command": "cd /d c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\langgraph_agent && c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\.venv\\Scripts\\python.exe -m pytest tests/test_mcp_transport.py -q",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-mcp-transport-3",
+			"type": "shell",
+			"command": "cd /d c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\langgraph_agent && c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\.venv\\Scripts\\python.exe -m pytest tests/test_mcp_transport.py -q",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-llm-provider-config-runtime",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"langgraph_agent\\tests\\test_llm_provider_config_runtime.py",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-llm-provider-config-runtime-2",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"langgraph_agent\\tests\\test_llm_provider_config_runtime.py",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-llm-provider-config-runtime-3",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"langgraph_agent\\tests\\test_llm_provider_config_runtime.py",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "dump-llm-runtime-head",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"show",
+				"HEAD:langgraph_agent/database/llm_provider_config_runtime.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "pytest-llm-provider-config-runtime-4",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"langgraph_agent\\tests\\test_llm_provider_config_runtime.py",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "pytest-phase3-admin-delete",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"langgraph_agent\\tests\\test_phase3_admin_endpoints.py",
+				"-k",
+				"delete_configuration_endpoints",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		}
+	]
+}

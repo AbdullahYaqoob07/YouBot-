@@ -1,0 +1,293 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sora);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.075 0.012 165);
+  --foreground: oklch(0.95 0.012 160);
+  --card: oklch(0.108 0.012 165);
+  --card-foreground: oklch(0.95 0.012 160);
+  --popover: oklch(0.095 0.012 165);
+  --popover-foreground: oklch(0.95 0.012 160);
+  --primary: oklch(0.76 0.13 152);
+  --primary-foreground: oklch(0.11 0.015 165);
+  --secondary: oklch(0.16 0.015 165);
+  --secondary-foreground: oklch(0.92 0.012 160);
+  --muted: oklch(0.145 0.012 165);
+  --muted-foreground: oklch(0.79 0.02 160);
+  --accent: oklch(0.22 0.03 166);
+  --accent-foreground: oklch(0.95 0.012 160);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(0.62 0.04 160 / 18%);
+  --input: oklch(0.62 0.04 160 / 18%);
+  --ring: oklch(0.72 0.1 158);
+  --chart-1: oklch(0.76 0.13 152);
+  --chart-2: oklch(0.71 0.1 174);
+  --chart-3: oklch(0.66 0.08 144);
+  --chart-4: oklch(0.63 0.07 190);
+  --chart-5: oklch(0.58 0.055 164);
+  --sidebar: oklch(0.09 0.013 165);
+  --sidebar-foreground: oklch(0.93 0.012 160);
+  --sidebar-primary: oklch(0.74 0.12 152);
+  --sidebar-primary-foreground: oklch(0.11 0.014 165);
+  --sidebar-accent: oklch(0.14 0.015 165);
+  --sidebar-accent-foreground: oklch(0.93 0.012 160);
+  --sidebar-border: oklch(0.62 0.04 160 / 18%);
+  --sidebar-ring: oklch(0.72 0.1 158);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at 12% -18%, rgba(16, 185, 129, 0.09), transparent 46%),
+      radial-gradient(circle at 88% 118%, rgba(74, 222, 128, 0.06), transparent 44%),
+      linear-gradient(130deg, rgba(1, 4, 3, 1), rgba(1, 2, 2, 1));
+    background-attachment: fixed;
+    line-height: 1.55;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading;
+  }
+}
+
+@keyframes aurora-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-3%, 2%, 0) scale(1.05);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes grid-pan {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-36px);
+  }
+}
+
+@keyframes rise-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 0 rgba(16, 185, 129, 0);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(16, 185, 129, 0.25);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes bar-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 180% 50%;
+  }
+}
+
+@keyframes apex-arc {
+  0% {
+    opacity: 0.58;
+    transform: translate(-50%, 0) scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translate(-50%, -1.2%) scale(1.015);
+  }
+  100% {
+    opacity: 0.58;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@layer utilities {
+  /*
+   * Calm console background — matches the Admin Chat Handler look.
+   * No grid pattern, no animation; just a subtle dark gradient with a
+   * single soft lime aura so the workspace feels consistent across pages.
+   */
+  .futuristic-bg {
+    position: relative;
+    isolation: isolate;
+    background:
+      radial-gradient(circle at 18% -10%, rgba(132, 204, 22, 0.07), transparent 50%),
+      radial-gradient(circle at 84% 118%, rgba(132, 204, 22, 0.04), transparent 45%),
+      linear-gradient(170deg, #020403 0%, #010202 60%, #020403 100%);
+  }
+
+  .panel-glass {
+    backdrop-filter: blur(12px);
+    background: linear-gradient(145deg, rgba(2, 8, 7, 0.9), rgba(2, 6, 5, 0.86));
+    border: 1px solid rgba(74, 222, 128, 0.14);
+    box-shadow: 0 24px 54px rgba(0, 0, 0, 0.56), inset 0 1px 0 rgba(167, 243, 208, 0.05);
+  }
+
+  .enter-rise {
+    animation: rise-fade 0.65s ease-out both;
+  }
+
+  .pulse-glow {
+    animation: pulse-glow 3.6s ease-in-out infinite;
+  }
+
+  .progress-glow {
+    background-image: linear-gradient(90deg, #10b981 0%, #2dd4bf 50%, #10b981 100%);
+    background-size: 180% 100%;
+    animation: bar-shimmer 3.6s linear infinite;
+  }
+
+  /*
+   * Page hero panel — minimal version that mirrors the Admin Chat Handler
+   * outer card (rounded-2xl, lime-500/20 border, bg-black/40).
+   */
+  .apex-panel {
+    background: rgba(0, 0, 0, 0.4);
+    border-color: rgba(132, 204, 22, 0.2) !important;
+    box-shadow: 0 1px 0 rgba(190, 242, 100, 0.04) inset;
+  }
+
+  .neon-text {
+    text-shadow: 0 0 14px rgba(163, 230, 53, 0.42);
+  }
+
+  .apex-arc {
+    position: absolute;
+    left: 50%;
+    top: 72px;
+    width: min(1120px, 96vw);
+    height: 570px;
+    transform: translateX(-50%);
+    border-radius: 999px 999px 0 0;
+    border-top: 12px solid rgba(163, 230, 53, 0.9);
+    border-left: 12px solid rgba(163, 230, 53, 0.44);
+    border-right: 12px solid rgba(163, 230, 53, 0.44);
+    border-bottom: 0;
+    filter: drop-shadow(0 0 20px rgba(163, 230, 53, 0.4));
+    opacity: 0.8;
+    animation: apex-arc 4.8s ease-in-out infinite;
+  }
+
+  .apex-arc-soft {
+    position: absolute;
+    left: 50%;
+    top: 90px;
+    width: min(980px, 88vw);
+    height: 500px;
+    transform: translateX(-50%);
+    border-radius: 999px 999px 0 0;
+    border-top: 8px solid rgba(163, 230, 53, 0.3);
+    border-left: 8px solid rgba(163, 230, 53, 0.18);
+    border-right: 8px solid rgba(163, 230, 53, 0.18);
+    border-bottom: 0;
+    filter: blur(1px);
+  }
+}

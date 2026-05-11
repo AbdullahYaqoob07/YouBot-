@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 5 Tenant Analytics Validator</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; padding: 2rem; max-width: 1200px; margin: 0 auto; background: #f9fafb; color: #333; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e5e7eb; padding-bottom: 1rem; margin-bottom: 2rem; }
+        .nav-links a { margin-left: 1rem; color: #2563eb; text-decoration: none; font-weight: 500; }
+        .nav-links a:hover { text-decoration: underline; }
+        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; font-weight: 500; margin-bottom: 0.5rem; color: #4b5563; }
+        input, select { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; font-size: 1rem; }
+        button { background: #2563eb; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-weight: 500; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        button.secondary { background: #4b5563; }
+        button.secondary:hover { background: #374151; }
+        pre { background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.875rem; border-left: 4px solid #3b82f6; white-space: pre-wrap; }
+        .status { padding: 0.75rem; border-radius: 4px; margin-top: 1rem; font-weight: 500; display: none; }
+        .status.success { display: block; background: #def7ec; color: #03543f; border: 1px solid #31c48d; }
+        .status.error { display: block; background: #fde8e8; color: #9b1c1c; border: 1px solid #f8b4b4; }
+        .status.loading { display: block; background: #e1effe; color: #1e429f; border: 1px solid #a4cafe; }
+        .kpi-board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 1rem; }
+        .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 6px; text-align: center; }
+        .kpi-value { font-size: 2rem; font-weight: bold; color: #0f172a; margin: 0.5rem 0; }
+        .kpi-label { font-size: 0.875rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Phase 5 Tenant Analytics Validator</h1>
+        <div class="nav-links">
+            <a href="/phase1/tenant-validation">Phase 1 (Tenant)</a>
+            <a href="/phase2/llm-validation">Phase 2 (LLM)</a>
+            <a href="/phase3/retrieval-validation">Phase 3 (Retrieval)</a>
+            <a href="/phase3/ingestion-validation">Phase 3 (Ingestion)</a>
+            <a href="/phase4/supervision-validation">Phase 4 (Supervision)</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Tenant Context Settings</h2>
+        <p class="help-text" style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+            These credentials are required to interact with the tenant analytics endpoints.
+        </p>
+        <div class="grid">
+            <div class="form-group">
+                <label for="apiBaseUrl">API Base URL</label>
+                <input id="apiBaseUrl" type="text" value="http://127.0.0.1:8000" />
+            </div>
+            <div class="form-group">
+                <label for="tenantId">Tenant ID (X-Tenant-Id)</label>
+                <input id="tenantId" type="text" value="tenant_sweden_001" />
+            </div>
+            <div class="form-group">
+                <label for="workspaceId">Workspace ID (X-Workspace-Id)</label>
+                <input id="workspaceId" type="text" value="workspace_001" />
+            </div>
+            <div class="form-group">
+                <label for="adminKey">Admin Auth Key (X-Admin-Key)</label>
+                <input id="adminKey" type="password" value="your_admin_secret_key" />
+            </div>
+            <div class="form-group">
+                <label for="timeframe">Timeframe (Days)</label>
+                <input id="timeframe" type="number" value="30" min="1" max="365" />
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>1. Analytics Overview</h2>
+        <p>Fetch high-level KPIs and volume metrics for the workspace.</p>
+        <button onclick="fetchOverview()">Get Overview</button>
+        <div id="overviewStatus" class="status"></div>
+        
+        <div id="kpiBoard" class="kpi-board" style="display: none;">
+            <div class="kpi-card">
+                <div class="kpi-label">Health Score</div>
+                <div id="kpiHealth" class="kpi-value">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total Conversations</div>
+                <div id="kpiTotal" class="kpi-value">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Auto-Resolution</div>
+                <div id="kpiAutoRes" class="kpi-value">-%</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Avg Response</div>
+                <div id="kpiResponse" class="kpi-value">-ms</div>
+            </div>
+        </div>
+
+        <pre id="overviewRaw" style="display: none;"></pre>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h2>2. AI Performance</h2>
+            <p>Retrieval hit rates, fallback rates, and AI specific routing insights.</p>
+            <button onclick="fetchAiPerformance()">Get AI Performance</button>
+            <div id="aiStatus" class="status"></div>
+            <pre id="aiRaw"></pre>
+        </div>
+
+        <div class="card">
+            <h2>3. User Performance</h2>
+            <p>Completion, repeat-contact, sentiment, and drop-off metrics.</p>
+            <button onclick="fetchUserPerformance()">Get User Performance</button>
+            <div id="userStatus" class="status"></div>
+            <pre id="userRaw"></pre>
+        </div>
+
+        <div class="card">
+            <h2>4. Team Performance</h2>
+            <p>Queue wait, takeover response, handling time, and SLA breach rates.</p>
+            <button onclick="fetchTeamPerformance()">Get Team Performance</button>
+            <div id="teamStatus" class="status"></div>
+            <pre id="teamRaw"></pre>
+        </div>
+
+        <div class="card">
+            <h2>5. KB Performance</h2>
+            <p>Retrieval hit, citation coverage, freshness, and source quality.</p>
+            <button onclick="fetchKbPerformance()">Get KB Performance</button>
+            <div id="kbStatus" class="status"></div>
+            <pre id="kbRaw"></pre>
+        </div>
+
+        <div class="card">
+            <h2>6. Channel Performance</h2>
+            <p>Volume, latency, and resolution splits grouped by origin channel.</p>
+            <button onclick="fetchChannelPerformance()">Get Channel Distro</button>
+            <div id="channelStatus" class="status"></div>
+            <pre id="channelRaw"></pre>
+        </div>
+
+        <div class="card">
+            <h2>7. Export CSV</h2>
+            <p>Download/export analytics snapshot in CSV format.</p>
+            <div class="form-group">
+                <label for="exportDomain">Domain</label>
+                <select id="exportDomain">
+                    <option value="all" selected>all</option>
+                    <option value="overview">overview</option>
+                    <option value="user">user</option>
+                    <option value="ai">ai</option>
+                    <option value="team">team</option>
+                    <option value="kb">kb</option>
+                    <option value="channel">channel</option>
+                </select>
+            </div>
+            <button onclick="fetchExportCsv()">Get Export CSV</button>
+            <div id="exportStatus" class="status"></div>
+            <pre id="exportRaw"></pre>
+        </div>
+
+        <div class="card">
+            <h2>8. Alerts</h2>
+            <p>Create alert rule and list alert events.</p>
+            <div class="form-group">
+                <label for="alertRuleName">Rule Name</label>
+                <input id="alertRuleName" type="text" value="SLA Breach Guard" />
+            </div>
+            <div class="form-group">
+                <label for="alertMetricName">Metric Name</label>
+                <input id="alertMetricName" type="text" value="sla_breach_rate" />
+            </div>
+            <div class="grid" style="grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="alertCondition">Condition</label>
+                    <select id="alertCondition">
+                        <option value="gt" selected>gt</option>
+                        <option value="gte">gte</option>
+                        <option value="lt">lt</option>
+                        <option value="lte">lte</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="alertThreshold">Threshold</label>
+                    <input id="alertThreshold" type="number" step="0.1" value="5" />
+                </div>
+            </div>
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button onclick="createAlertRule()">Create Rule</button>
+                <button class="secondary" onclick="fetchAlertEvents()">Get Alert Events</button>
+            </div>
+            <div id="alertStatus" class="status"></div>
+            <pre id="alertRaw"></pre>
+        </div>
+
+        <div class="card">
+            <h2>9. Usage and Quota Governance</h2>
+            <p>Inspect usage utilization and quota forecast for the current tenant plan.</p>
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button onclick="fetchUsageGovernance()">Get Usage Snapshot</button>
+                <button class="secondary" onclick="fetchQuotaGovernance()">Get Quota Forecast</button>
+            </div>
+            <div id="governanceStatus" class="status"></div>
+            <pre id="governanceRaw"></pre>
+        </div>
+    </div>
+
+    <script>
+        function getApiBaseUrl() {
+            const configured = document.getElementById("apiBaseUrl").value.trim();
+            const fallback = (window.location.origin && window.location.origin.startsWith("http"))
+                ? window.location.origin
+                : "http://127.0.0.1:8000";
+            return (configured || fallback).replace(/\/$/, "");
+        }
+
+        function getHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "X-Tenant-Id": document.getElementById("tenantId").value.trim(),
+                "X-Workspace-Id": document.getElementById("workspaceId").value.trim(),
+                "X-Admin-Key": document.getElementById("adminKey").value.trim()
+            };
+        }
+
+        async function callApi(path) {
+            const url = `${getApiBaseUrl()}${path}`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: getHeaders()
+            });
+
+            const responseText = await response.text();
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (_) {
+                const snippet = (responseText || "").trim().slice(0, 220);
+                throw new Error(
+                    `Non-JSON response (HTTP ${response.status}) from ${url}: ${snippet || "<empty>"}`
+                );
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || JSON.stringify(data));
+            }
+
+            return data;
+        }
+
+        async function callApiText(path) {
+            const url = `${getApiBaseUrl()}${path}`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: getHeaders()
+            });
+
+            const text = await response.text();
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${text.slice(0, 220)}`);
+            }
+            return text;
+        }
+
+        async function callApiPost(path, payload) {
+            const url = `${getApiBaseUrl()}${path}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify(payload || {})
+            });
+
+            const responseText = await response.text();
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (_) {
+                throw new Error(
+                    `Non-JSON response (HTTP ${response.status}) from ${url}: ${(responseText || "").trim().slice(0, 220) || "<empty>"}`
+                );
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || JSON.stringify(data));
+            }
+
+            return data;
+        }
+
+        async function fetchOverview() {
+            const statusEl = document.getElementById("overviewStatus");
+            const rawEl = document.getElementById("overviewRaw");
+            const kpiBoard = document.getElementById("kpiBoard");
+            const days = document.getElementById("timeframe").value;
+            
+            showLoading(statusEl, "Fetching overview analytics...");
+            rawEl.style.display = "none";
+            kpiBoard.style.display = "none";
+
+            try {
+                const data = await callApi(`/tenant-analytics/overview?days=${days}`);
+                
+                showSuccess(statusEl, "Overview analytics loaded successfully!");
+                
+                // Update KPIs
+                if(data.data) {
+                    document.getElementById("kpiHealth").textContent = data.data.health_score;
+                    document.getElementById("kpiTotal").textContent = data.data.total_conversations;
+                    document.getElementById("kpiAutoRes").textContent = data.data.auto_resolution_rate + "%";
+                    document.getElementById("kpiResponse").textContent = data.data.avg_response_time_ms + "ms";
+                    kpiBoard.style.display = "grid";
+                }
+                
+                rawEl.textContent = JSON.stringify(data, null, 2);
+                rawEl.style.display = "block";
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function fetchAiPerformance() {
+            const statusEl = document.getElementById("aiStatus");
+            const rawEl = document.getElementById("aiRaw");
+            const days = document.getElementById("timeframe").value;
+            
+            showLoading(statusEl, "Fetching AI performance analytics...");
+            
+            try {
+                const data = await callApi(`/tenant-analytics/ai-performance?days=${days}`);
+                
+                showSuccess(statusEl, "AI Performance loaded successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function fetchUserPerformance() {
+            const statusEl = document.getElementById("userStatus");
+            const rawEl = document.getElementById("userRaw");
+            const days = document.getElementById("timeframe").value;
+
+            showLoading(statusEl, "Fetching user performance analytics...");
+
+            try {
+                const data = await callApi(`/tenant-analytics/user-performance?days=${days}`);
+                showSuccess(statusEl, "User performance loaded successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function fetchTeamPerformance() {
+            const statusEl = document.getElementById("teamStatus");
+            const rawEl = document.getElementById("teamRaw");
+            const days = document.getElementById("timeframe").value;
+
+            showLoading(statusEl, "Fetching team performance analytics...");
+
+            try {
+                const data = await callApi(`/tenant-analytics/team-performance?days=${days}`);
+                showSuccess(statusEl, "Team performance loaded successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function fetchKbPerformance() {
+            const statusEl = document.getElementById("kbStatus");
+            const rawEl = document.getElementById("kbRaw");
+            const days = document.getElementById("timeframe").value;
+
+            showLoading(statusEl, "Fetching KB performance analytics...");
+
+            try {
+                const data = await callApi(`/tenant-analytics/kb-performance?days=${days}`);
+                showSuccess(statusEl, "KB performance loaded successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function fetchChannelPerformance() {
+            const statusEl = document.getElementById("channelStatus");
+            const rawEl = document.getElementById("channelRaw");
+            const days = document.getElementById("timeframe").value;
+            
+            showLoading(statusEl, "Fetching Channel performance analytics...");
+            
+            try {
+                const data = await callApi(`/tenant-analytics/channel-performance?days=${days}`);
+                
+                showSuccess(statusEl, "Channel performance loaded successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function fetchExportCsv() {
+            const statusEl = document.getElementById("exportStatus");
+            const rawEl = document.getElementById("exportRaw");
+            const days = document.getElementById("timeframe").value;
+            const domain = document.getElementById("exportDomain").value;
+
+            showLoading(statusEl, "Fetching CSV export...");
+
+            try {
+                const data = await callApiText(`/tenant-analytics/export.csv?days=${days}&domain=${encodeURIComponent(domain)}`);
+                showSuccess(statusEl, "CSV export loaded successfully!");
+                rawEl.textContent = data;
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function createAlertRule() {
+            const statusEl = document.getElementById("alertStatus");
+            const rawEl = document.getElementById("alertRaw");
+
+            showLoading(statusEl, "Creating alert rule...");
+
+            try {
+                const payload = {
+                    ruleName: document.getElementById("alertRuleName").value.trim(),
+                    metricName: document.getElementById("alertMetricName").value.trim(),
+                    condition: document.getElementById("alertCondition").value,
+                    thresholdValue: Number(document.getElementById("alertThreshold").value),
+                    isActive: true
+                };
+
+                const data = await callApiPost(`/tenant-analytics/alerts/rules`, payload);
+                showSuccess(statusEl, "Alert rule created successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Create failed", err);
+            }
+        }
+
+        async function fetchAlertEvents() {
+            const statusEl = document.getElementById("alertStatus");
+            const rawEl = document.getElementById("alertRaw");
+            const days = document.getElementById("timeframe").value;
+
+            showLoading(statusEl, "Fetching alert events...");
+
+            try {
+                const data = await callApi(`/tenant-analytics/alerts/events?days=${days}&limit=50`);
+                showSuccess(statusEl, "Alert events loaded successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function fetchUsageGovernance() {
+            const statusEl = document.getElementById("governanceStatus");
+            const rawEl = document.getElementById("governanceRaw");
+            const days = document.getElementById("timeframe").value;
+
+            showLoading(statusEl, "Fetching governance usage snapshot...");
+
+            try {
+                const data = await callApi(`/tenant-analytics/governance/usage?days=${days}`);
+                showSuccess(statusEl, "Governance usage loaded successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        async function fetchQuotaGovernance() {
+            const statusEl = document.getElementById("governanceStatus");
+            const rawEl = document.getElementById("governanceRaw");
+            const days = document.getElementById("timeframe").value;
+
+            showLoading(statusEl, "Fetching quota forecast...");
+
+            try {
+                const data = await callApi(`/tenant-analytics/governance/quota?days=${days}`);
+                showSuccess(statusEl, "Quota forecast loaded successfully!");
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                showError(statusEl, "Fetch failed", err);
+            }
+        }
+
+        function showLoading(element, msg) {
+            element.className = 'status loading';
+            element.textContent = msg;
+            element.style.display = 'block';
+        }
+
+        function showSuccess(element, msg) {
+            element.className = 'status success';
+            element.textContent = msg;
+            element.style.display = 'block';
+        }
+
+        function showError(element, context, err) {
+            element.className = 'status error';
+            element.textContent = `${context}: ${err.message || err}`;
+            element.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
