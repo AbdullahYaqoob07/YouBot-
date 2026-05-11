@@ -13,7 +13,7 @@ class ConversationMessage(TypedDict):
     timestamp: datetime
 
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     """
     Complete state for the AI agent workflow
     This state is persisted in checkpoints and flows through all nodes
@@ -23,6 +23,8 @@ class AgentState(TypedDict):
     user_id: str
     session_id: str
     channel: str  # whatsapp, instagram, email, webhook
+    tenant_id: str
+    workspace_id: str
     
     # User Information
     user_name: Optional[str]
@@ -51,6 +53,9 @@ class AgentState(TypedDict):
     knowledge_base_results: List[Dict[str, Any]]
     knowledge_base_used: bool
     cache_hit: bool  # True if response came from FAQ cache
+    retrieval_mode_selected: Optional[str]
+    retrieval_mode_recommended: Optional[str]
+    retrieval_mode_reason: Optional[str]
     
     # AI Response
     ai_response: str

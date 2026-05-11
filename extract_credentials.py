@@ -171,15 +171,15 @@ def main():
    python test_workflow.py
 
 4. Start the API server:
-   uvicorn app:app --reload --port 5678
+    uvicorn app:app --reload --port 8000
 
 5. Test the API:
-   curl -X POST http://localhost:5678/webhook/ai-agent \\
+    curl -X POST http://localhost:8000/webhook/ai-agent \\
      -H "Content-Type: application/json" \\
      -d '{"message": "Hej! Hur får jag personnummer?", "user_id": "test123"}'
 
 6. Check health:
-   curl http://localhost:5678/health
+    curl http://localhost:8000/health
 """)
     
     print("\n✨ Setup complete! Your LangGraph agent is ready to run!")

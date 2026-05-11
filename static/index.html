@@ -63,6 +63,30 @@
             font-size: 14px;
         }
 
+        .quick-links {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .quick-links a {
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            color: #1f3d8f;
+            background: #e9efff;
+            border: 1px solid #c7d6ff;
+            border-radius: 999px;
+            padding: 6px 10px;
+            transition: all 0.2s;
+        }
+
+        .quick-links a:hover {
+            background: #d9e5ff;
+            transform: translateY(-1px);
+        }
+
         /* Admin Controls */
         .admin-status {
             display: flex;
@@ -378,6 +402,15 @@
             <div class="header">
                 <h1>🤖 AI Agent Test Console</h1>
                 <p>Sweden Relocators - LangGraph AI System</p>
+                <div class="quick-links">
+                    <a href="/phase1/tenant-validation" target="_blank" rel="noopener noreferrer">Phase 1 Tenant Validator</a>
+                    <a href="/phase2/llm-validation" target="_blank" rel="noopener noreferrer">Phase 2 LLM Validator</a>
+                    <a href="/phase3/retrieval-validation" target="_blank" rel="noopener noreferrer">Phase 3 Retrieval Validator</a>
+                    <a href="/phase3/ingestion-validation" target="_blank" rel="noopener noreferrer">Phase 3 Ingestion Validator</a>
+                    <a href="/phase4/supervision-validation" target="_blank" rel="noopener noreferrer">Phase 4 Supervision Validator</a>
+                    <a href="/phase5/analytics-validation" target="_blank" rel="noopener noreferrer">Phase 5 Analytics Validator</a>
+                    <a href="/saas-readiness" target="_blank" rel="noopener noreferrer">SaaS Readiness Verifier</a>
+                </div>
             </div>
 
             <div class="chat-messages" id="chatMessages">
@@ -498,7 +531,9 @@
         let lastMessageTimestamp = 0;
         let pollingInterval = null;
         
-        const API_BASE = 'http://localhost:5678';
+        const API_BASE = window.location.origin.startsWith('http')
+            ? window.location.origin
+            : 'http://localhost:8000';
         const API_KEY = 'eptU3MB3c7PHHBXt3OspFmvbS2u369e6x5gNa-6aqgE';
         const ADMIN_KEY = '5Cch-yzNNLBzqc0rW6EBSQI2PSGPbWLHv4yhajHVQTs';
 
@@ -753,7 +788,7 @@
 
             } catch (error) {
                 console.error('Error:', error);
-                addMessage('assistant', `❌ Error: ${error.message}. Make sure the server is running on port 5678 and API keys are correct.`);
+                addMessage('assistant', `❌ Error: ${error.message}. Make sure the server is running on port 8000 and API keys are correct.`);
             } finally {
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'Send';
@@ -830,7 +865,7 @@
                 const data = await response.json();
                 console.log('Server health:', data);
             } catch (error) {
-                console.error('Server not reachable. Please start the server with: uvicorn app:app --reload --port 5678');
+                console.error('Server not reachable. Please start the server with: uvicorn app:app --reload --port 8000');
                 addMessage('assistant', '⚠️ Server not reachable. Please start the server first.');
             }
         }

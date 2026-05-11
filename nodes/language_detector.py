@@ -2,12 +2,11 @@
 Language Detection Node - LLM-POWERED AGENT
 Uses Groq LLM to accurately detect any language including Urdu
 """
-from functools import lru_cache
 from state import AgentState
-from langchain_groq import ChatGroq
+from database.llm_provider_config_runtime import get_workspace_llm_runtime_config
+from llm.factory import create_chat_model
 from config import settings
 from loguru import logger
-from pydantic import SecretStr
 
 # Non-Roman script languages for script type detection
 NON_ROMAN_SCRIPTS = {
@@ -18,14 +17,6 @@ NON_ROMAN_SCRIPTS = {
     'Ukrainian', 'Bulgarian', 'Serbian', 'Macedonian', 'Belarusian',
     'Pashto', 'Sindhi', 'Kashmiri', 'Uyghur'
 }
-
-# Initialize Groq LLM for language detection
-llm = ChatGroq(
-    api_key=SecretStr(settings.GROQ_API_KEY),
-    model=settings.GROQ_MODEL,
-    temperature=0.0,
-    max_tokens=30
-)
 
 # Enhanced Unicode-based fallback detection with Urdu support
 def quick_script_detection(text: str) -> tuple[str, bool]:
@@ -112,7 +103,11 @@ def quick_script_detection(text: str) -> tuple[str, bool]:
     return "English", True
 
 
-async def detect_language_with_llm(message: str) -> tuple[str, bool]:
+async def detect_language_with_llm(
+    message: str,
+    tenant_id: str,
+    workspace_id: str,
+) -> tuple[str, bool]:
     """
     Use Groq LLM to detect language - NOW SECONDARY FALLBACK
     """
@@ -121,6 +116,14 @@ async def detect_language_with_llm(message: str) -> tuple[str, bool]:
         return "English", True
     
     try:
+        runtime_llm = await get_workspace_llm_runtime_config(tenant_id, workspace_id)
+        llm = create_chat_model(
+            runtime=runtime_llm,
+            temperature=0.0,
+            max_tokens=30,
+            timeout_seconds=settings.GROQ_REQUEST_TIMEOUT,
+        )
+
         # Use first 200 chars for better context
         sample = message[:200].strip()
         
@@ -220,7 +223,11 @@ async def language_detection_node(state: AgentState) -> AgentState:
         # We need to run sync LLM call in threadpool or make it async if client allows
         # For now, we'll keep it simple but log the perf hit
         logger.info("⚠️ Falling back to LLM for language detection")
-        detected_language, is_roman_script = detect_language_with_llm(message)
+        detected_language, is_roman_script = await detect_language_with_llm(
+            message,
+            state.get("tenant_id"),
+            state.get("workspace_id"),
+        )
         
         state.update({
              "detected_language": detected_language,

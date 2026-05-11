@@ -10,7 +10,9 @@ from loguru import logger
 
 async def get_conversation_history(
     user_id: str,
-    limit: int = 10
+    limit: int = 10,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
 ) -> List[Dict]:
     """
     Get conversation history for a user
@@ -24,12 +26,14 @@ async def get_conversation_history(
     """
     try:
         async with get_async_session() as session:
-            query = (
-                select(ConversationLog)
-                .where(ConversationLog.user_id == user_id)
-                .order_by(desc(ConversationLog.created_at))
-                .limit(limit)
-            )
+            query = select(ConversationLog).where(ConversationLog.user_id == user_id)
+
+            if tenant_id:
+                query = query.where(ConversationLog.tenant_id == tenant_id)
+            if workspace_id:
+                query = query.where(ConversationLog.workspace_id == workspace_id)
+
+            query = query.order_by(desc(ConversationLog.created_at)).limit(limit)
             
             result = await session.execute(query)
             conversations = result.scalars().all()
@@ -55,6 +59,8 @@ async def save_conversation(
     user_id: str,
     user_message: str,
     assistant_response: str,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
     language: Optional[str] = None,
     channel: Optional[str] = None,
     sentiment: str = "neutral",
@@ -88,6 +94,8 @@ async def save_conversation(
             conversation = ConversationLog(
                 session_id=session_id,
                 user_id=user_id,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
                 user_message=user_message,
                 assistant_response=assistant_response,
                 language=language,

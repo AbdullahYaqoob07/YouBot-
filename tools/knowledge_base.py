@@ -2,21 +2,36 @@
 Knowledge Base RAG Tool - OPTIMIZED WITH ADVANCED CACHING
 Vector store tool for semantic search with analytics
 """
-import hashlib
-from functools import lru_cache
+import re
 from langchain.tools import tool
 from langchain_community.vectorstores import Chroma
-from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from pinecone import Pinecone
 from config import settings
 from loguru import logger
-from utils.faq_cache import faq_cache
 
 # Global cache for embeddings model (singleton pattern)
 _embeddings_cache = None
 _vector_store_cache = None
+
+
+def _normalize_namespace_token(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "_", (value or "").strip())
+    return cleaned[:80] if cleaned else ""
+
+
+def build_kb_namespace(tenant_id: str | None = None, workspace_id: str | None = None) -> str:
+    """
+    Build Pinecone namespace. Uses tenant/workspace namespace when provided,
+    otherwise falls back to the legacy global namespace.
+    """
+    default_namespace = "sweden_relocators_v3"
+    tenant_token = _normalize_namespace_token(tenant_id or "")
+    workspace_token = _normalize_namespace_token(workspace_id or "")
+    if tenant_token and workspace_token:
+        return f"t_{tenant_token}__w_{workspace_token}"
+    return default_namespace
 
 
 def get_cached_embeddings():
@@ -44,23 +59,41 @@ async def create_knowledge_base_tool():
         logger.debug("Using cached vector store and embeddings")
         
         @tool
-        async def knowledge_base_search(query: str, language: str = "English") -> str:
+        async def knowledge_base_search(
+            query: str,
+            language: str = "English",
+            retrieval_mode: str = "rag",
+            tenant_id: str = "",
+            workspace_id: str = "",
+            page_window_limit: int = 4,
+            page_neighbor_window: int = 0,
+        ) -> str:
             """
-            Search the Sweden Relocators knowledge base for information about visas, 
-            relocation, housing, jobs, and immigration procedures.
+            Search the workspace knowledge base for information that may answer the user's question. 
+            Returns the most relevant text snippets to ground the assistant's reply.
             
             Use this tool to find specific information before answering user questions.
             CACHED with MULTILINGUAL SUPPORT - repeated queries return instantly.
             Supports cross-language caching: ask in any language, get cached answer with translation.
             
             Args:
-                query: The search query about Sweden relocation
+                query: The search query (free text)
                 language: Language of the query (for smart caching and translation)
                 
             Returns:
                 Relevant information from the knowledge base
             """
-            return await _cached_kb_search(query, language, _embeddings_cache, _vector_store_cache)
+            return await _cached_kb_search(
+                query,
+                language,
+                _embeddings_cache,
+                _vector_store_cache,
+                retrieval_mode=retrieval_mode,
+                tenant_id=tenant_id or None,
+                workspace_id=workspace_id or None,
+                page_window_limit=page_window_limit,
+                page_neighbor_window=page_neighbor_window,
+            )
         
         return knowledge_base_search
     
@@ -112,54 +145,107 @@ async def create_knowledge_base_tool():
     logger.info("✅ Embeddings and vector store cached for reuse")
     
     @tool
-    async def knowledge_base_search(query: str, language: str = "English") -> str:
+    async def knowledge_base_search(
+        query: str,
+        language: str = "English",
+        retrieval_mode: str = "rag",
+        tenant_id: str = "",
+        workspace_id: str = "",
+    ) -> str:
         """
-        Search the Sweden Relocators knowledge base for information about visas, 
-        relocation, housing, jobs, and immigration procedures.
+        Search the workspace knowledge base for information that may answer the user's question. 
+        Returns the most relevant text snippets to ground the assistant's reply.
         
         Use this tool to find specific information before answering user questions.
         CACHED with MULTILINGUAL SUPPORT - repeated queries return instantly.
         Supports cross-language caching: ask in any language, get cached answer with translation.
         
         Args:
-            query: The search query about Sweden relocation
+            query: The search query (free text)
             language: Language of the query (for smart caching and translation)
             
         Returns:
             Relevant information from the knowledge base
         """
-        return await _cached_kb_search(query, language, _embeddings_cache, _vector_store_cache)
+        return await _cached_kb_search(
+            query,
+            language,
+            _embeddings_cache,
+            _vector_store_cache,
+            retrieval_mode=retrieval_mode,
+            tenant_id=tenant_id or None,
+            workspace_id=workspace_id or None,
+        )
     
     return knowledge_base_search
 
 
-async def _cached_kb_search(query: str, language: str, embeddings, vector_store) -> str:
+def _match_text(metadata: dict) -> str:
+    if 'question' in metadata and 'answer' in metadata:
+        return f"Q: {metadata['question']}\nA: {metadata['answer']}"
+    if 'text' in metadata:
+        return str(metadata['text'])
+    if '_node_content' in metadata:
+        return str(metadata['_node_content'])
+    return str(metadata.get('content', metadata.get('page_content', '')))
+
+
+def _lexical_overlap(query: str, text: str) -> float:
+    query_terms = {w for w in re.findall(r"[a-z0-9]+", (query or "").lower()) if len(w) > 2}
+    if not query_terms:
+        return 0.0
+    text_terms = {w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(w) > 2}
+    if not text_terms:
+        return 0.0
+    overlap = query_terms.intersection(text_terms)
+    return min(1.0, len(overlap) / max(1, len(query_terms)))
+
+
+async def _cached_kb_search(
+    query: str,
+    language: str,
+    embeddings,
+    vector_store,
+    retrieval_mode: str = "rag",
+    tenant_id: str | None = None,
+    workspace_id: str | None = None,
+    page_window_limit: int = 4,
+    page_neighbor_window: int = 0,
+) -> str:
     """
-    Search the Sweden Relocators knowledge base for information about visas, 
-    relocation, housing, jobs, and immigration procedures.
+    Search the workspace knowledge base for information that may answer the user's question. 
+    Returns the most relevant text snippets to ground the assistant's reply.
     
-    Use this tool to find specific information before answering user questions.
-    CACHED with MULTILINGUAL SUPPORT - repeated queries return instantly.
-    Supports cross-language caching: ask in any language, get cached answer with translation.
+    STRICT RAG: Only returns documents above minimum relevance score.
+    If no relevant documents found, returns clear "no information" message.
     
     Args:
         query: The search query
         language: Language of the query (for smart caching and translation)
         
     Returns:
-        Relevant information from the knowledge base
+        Relevant information from the knowledge base, or "no relevant information" message
     """
-    # NOTE: Cache check is now done in rag_agent.py before calling this function
-    # to avoid duplicate cache lookups. This function now only does the actual search.
-    
     try:
         logger.info(f"Knowledge base search: {query}")
         
-        # Use VECTOR_TOP_K from config if available, otherwise KNOWLEDGE_BASE_TOP_K
-        top_k = getattr(settings, 'VECTOR_TOP_K', settings.KNOWLEDGE_BASE_TOP_K)
+        mode = (retrieval_mode or "rag").strip().lower()
+        if mode not in {"rag", "page_index", "hybrid"}:
+            mode = "rag"
+
+        # Use settings for top_k and minimum score threshold
+        top_k = getattr(settings, 'VECTOR_TOP_K', 5)
+        min_score = getattr(settings, 'VECTOR_MIN_SCORE', 0.65)
+        if mode == "page_index":
+            top_k = max(top_k, 8)
+            min_score = max(0.45, min_score - 0.12)
+        elif mode == "hybrid":
+            top_k = max(top_k * 2, 8)
+            min_score = max(0.5, min_score - 0.08)
+
+        namespace = build_kb_namespace(tenant_id, workspace_id)
         
-        # Use cached vector store - already initialized with embeddings
-        # Query Pinecone directly since LlamaIndex storage format isn't compatible with LangChain's parser
+        # Generate query embedding
         query_embedding = embeddings.embed_query(query)
         
         # Get index from cached vector store
@@ -168,44 +254,107 @@ async def _cached_kb_search(query: str, language: str, embeddings, vector_store)
         raw_results = index.query(
             vector=query_embedding,
             top_k=top_k,
-            namespace="sweden_relocators_v3",
+            namespace=namespace,
             include_metadata=True
         )
         
         if not raw_results or not raw_results.matches:
+            logger.info("No matches returned from vector store")
             return "No relevant information found in knowledge base."
         
+        ranked_matches = []
+        for match in raw_results.matches:
+            metadata = match.metadata or {}
+            text = _match_text(metadata)
+            lexical = _lexical_overlap(query, text)
+
+            if mode == "hybrid":
+                score = (0.7 * float(match.score)) + (0.3 * lexical)
+            elif mode == "page_index":
+                has_page_signal = bool(metadata.get("document_id") and metadata.get("page_number") is not None)
+                page_bonus = 0.08 if has_page_signal else 0.0
+                score = float(match.score) + page_bonus
+            else:
+                score = float(match.score)
+
+            ranked_matches.append((score, match))
+
+        ranked_matches.sort(key=lambda item: item[0], reverse=True)
+
+        # Filter by minimum relevance score - STRICT RAG
+        relevant_matches = [match for score, match in ranked_matches if score >= min_score]
+        
+        if not relevant_matches:
+            logger.info(f"No documents above minimum score {min_score}. Best score was {raw_results.matches[0].score:.2f}")
+            return f"No relevant information found in knowledge base. (Best match score: {raw_results.matches[0].score:.2f}, threshold: {min_score})"
+
+        # ── Page Index mode: replace chunks with full pages from document_pages ──
+        if mode == "page_index" and workspace_id:
+            page_refs: list[tuple[str, int]] = []
+            for match in relevant_matches:
+                meta = match.metadata or {}
+                doc_id = meta.get("document_id")
+                page_num = meta.get("page_number")
+                if doc_id and page_num is not None:
+                    page_refs.append((str(doc_id), int(page_num)))
+
+            if page_refs:
+                from database.page_index import load_pages_for_match_refs
+
+                pages = await load_pages_for_match_refs(
+                    workspace_id=workspace_id,
+                    page_refs=page_refs,
+                    tenant_id=tenant_id,
+                    max_pages=max(1, page_window_limit),
+                    page_window=max(0, page_neighbor_window),
+                )
+
+                if pages:
+                    formatted_results = []
+                    for i, page in enumerate(pages, 1):
+                        heading = (
+                            f" — {page['section_headings']}" if page.get("section_headings") else ""
+                        )
+                        block = (
+                            f"[Page {i} | doc={page['document_id']} p.{page['page_number']}{heading}]\n"
+                            f"{page['page_text']}\n"
+                        )
+                        formatted_results.append(block)
+                    logger.info(
+                        "Page-index mode loaded {} full page(s) for workspace {}",
+                        len(pages),
+                        workspace_id,
+                    )
+                    if not formatted_results:
+                        return "Found documents but page text was empty. Knowledge base may need re-ingestion."
+                    return "\n---\n".join(formatted_results)
+
+                logger.info(
+                    "Page-index mode found chunk hits but no matching document_pages rows; "
+                    "falling back to chunk text."
+                )
+
         # Format results by extracting from metadata (LlamaIndex format)
         formatted_results = []
-        for i, match in enumerate(raw_results.matches, 1):
+        for i, match in enumerate(relevant_matches, 1):
             metadata = match.metadata or {}
-            logger.info(f"Document {i} metadata keys: {list(metadata.keys())}")
-            logger.info(f"Document {i} score: {match.score}")
-            
-            # Extract content from LlamaIndex metadata structure
-            if 'question' in metadata and 'answer' in metadata:
-                content = f"Q: {metadata['question']}\nA: {metadata['answer']}"
-            elif 'text' in metadata:
-                content = metadata['text']
-            elif '_node_content' in metadata:
-                # LlamaIndex sometimes stores full content here
-                content = metadata['_node_content']
-            else:
-                # Fallback: try to get any text content
-                content = str(metadata.get('content', metadata.get('page_content', '')))
+            logger.info(f"Document {i} score: {match.score:.2f} (above threshold {min_score})")
+
+            # Extract content from metadata structure
+            content = _match_text(metadata)
             
             if content and len(content) > 10:
-                formatted_results.append(f"Result {i} (score: {match.score:.2f}):\n{content}\n")
+                formatted_results.append(f"[Doc {i}, Score: {match.score:.2f}]\n{content}\n")
         
         if not formatted_results:
             return "Found documents but could not extract content. Knowledge base may need re-indexing."
         
-        result = "\n".join(formatted_results)
-        
-        # Cache the result with language for future queries
-        # requires_human=False because we found good KB results
-        faq_cache.set(query, result, language, requires_human=False)
-        
+        # Internal-only payload: the agent feeds this into the LLM as KB context
+        # and synthesizes a customer-facing reply. Headers like "Found N document(s)"
+        # and "[Doc N, Score: X]" must NEVER reach end users — see rag_agent.py for
+        # the synthesis step. We do not cache this raw retrieval; the agent caches
+        # the synthesized response instead.
+        result = "\n---\n".join(formatted_results)
         return result
         
     except Exception as e:

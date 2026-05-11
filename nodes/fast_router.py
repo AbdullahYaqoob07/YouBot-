@@ -6,21 +6,27 @@ from functools import lru_cache
 from state import AgentState
 from loguru import logger
 
-# Pre-defined responses for common patterns
+# Pre-defined responses for common patterns. Kept business-agnostic so the
+# same templates work for any tenant; the bot's identity (name, scope) is
+# applied later by the RAG agent's system prompt.
 GREETING_RESPONSES = {
-    "English": "Hello! I'm here to help with your relocation to Sweden. What would you like to know?",
-    "Swedish": "Hej! Jag är här för att hjälpa dig med din flytt till Sverige. Vad vill du veta?",
-    "Spanish": "¡Hola! Estoy aquí para ayudarte con tu mudanza a Suecia. ¿Qué te gustaría saber?",
-    "German": "Hallo! Ich bin hier, um Ihnen bei Ihrem Umzug nach Schweden zu helfen. Was möchten Sie wissen?",
-    "French": "Bonjour! Je suis là pour vous aider avec votre déménagement en Suède. Que voulez-vous savoir?"
+    "English": "Hello! How can I help you today?",
+    "Swedish": "Hej! Hur kan jag hjälpa dig idag?",
+    "Spanish": "¡Hola! ¿En qué puedo ayudarte hoy?",
+    "German": "Hallo! Wie kann ich Ihnen heute helfen?",
+    "French": "Bonjour! Comment puis-je vous aider aujourd'hui?",
+    "Urdu": "السلام علیکم! میں آپ کی کیسے مدد کر سکتا ہوں؟",
+    "Arabic": "مرحباً! كيف يمكنني مساعدتك اليوم؟",
 }
 
 FAREWELL_RESPONSES = {
-    "English": "Thank you for using our service! Feel free to reach out anytime you need help with relocating to Sweden.",
-    "Swedish": "Tack för att du använder vår tjänst! Tveka inte att höra av dig när som helst du behöver hjälp med flytten till Sverige.",
-    "Spanish": "¡Gracias por usar nuestro servicio! No dudes en contactarnos cuando necesites ayuda con tu mudanza a Suecia.",
-    "German": "Vielen Dank für die Nutzung unseres Service! Zögern Sie nicht, uns jederzeit zu kontaktieren, wenn Sie Hilfe beim Umzug nach Schweden benötigen.",
-    "French": "Merci d'utiliser notre service ! N'hésitez pas à nous contacter à tout moment si vous avez besoin d'aide pour votre déménagement en Suède."
+    "English": "Thanks for reaching out! Have a great day.",
+    "Swedish": "Tack för att du kontaktade oss! Ha en bra dag.",
+    "Spanish": "¡Gracias por contactarnos! Que tengas un buen día.",
+    "German": "Vielen Dank! Einen schönen Tag noch.",
+    "French": "Merci de nous avoir contactés! Bonne journée.",
+    "Urdu": "شکریہ! آپ کا دن اچھا ہو۔",
+    "Arabic": "شكراً للتواصل معنا! نتمنى لك يوماً سعيداً.",
 }
 
 # Fast pattern matching (pre-compiled for speed)

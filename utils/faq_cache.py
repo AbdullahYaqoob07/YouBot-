@@ -4,10 +4,13 @@ Handles caching with cross-language lookup and translation
 """
 import hashlib
 import json
+import pickle
+import base64
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple
 from collections import defaultdict
 from loguru import logger
+import numpy as np
 
 class FAQCacheManager:
     """
@@ -33,18 +36,27 @@ class FAQCacheManager:
         """
         self.max_size = max_size
         self.ttl = timedelta(hours=ttl_hours)
-        
-        # Cache storage: {cache_key: (query, result, language, timestamp, access_count, requires_human)}
-        self._cache: Dict[str, Tuple[str, str, str, datetime, int, bool]] = {}
+
+        # Cache storage: {cache_key: (query, result, language, timestamp, access_count, requires_human, embedding, scope)}
+        # `query` is the plain user question (no scaffolding) so embeddings and
+        # word-overlap comparisons are meaningful. `scope` is an opaque partition
+        # key (e.g. retrieval mode + namespace + cache version) — matches only
+        # succeed within the same scope.
+        self._cache: Dict[str, Tuple[str, str, str, datetime, int, bool, Optional[np.ndarray], str]] = {}
         
         # Analytics
         self._hit_count = 0
         self._miss_count = 0
         self._cross_lang_hits = 0
+        self._semantic_hits = 0
+        self._exact_hits = 0
         self._query_patterns = defaultdict(int)  # Track query frequency
         self._popular_faqs = defaultdict(int)    # Track popular FAQ hits
         
-        logger.info(f"Enhanced FAQ Cache initialized: max_size={max_size}, ttl={ttl_hours}h, multilingual=True")
+        # Embedding service (lazy loaded)
+        self._embedding_service = None
+        
+        logger.info(f"Enhanced FAQ Cache initialized: max_size={max_size}, ttl={ttl_hours}h, multilingual=True, semantic=True")
     
     def _normalize_query(self, query: str) -> str:
         """
@@ -63,41 +75,46 @@ class FAQCacheManager:
         words.sort()
         return ' '.join(words)
     
-    def _get_cache_key(self, query: str, language: str = None) -> str:
+    def _get_cache_key(self, query: str, language: str = None, scope: str = "") -> str:
         """
-        Generate cache key from query
-        
-        Args:
-            query: User query
-            language: Language of query (optional, for exact match)
-            
-        Returns:
-            MD5 hash of normalized query
+        Generate cache key from query, language, and scope.
+
+        Scope partitions the cache so that entries from different retrieval
+        modes / namespaces / cache versions cannot collide.
         """
         normalized = self._normalize_query(query)
         if language:
-            # Include language for exact match
-            key_str = f"{normalized}_{language.lower()}"
+            key_str = f"{scope}||{normalized}||{language.lower()}"
         else:
-            # Language-agnostic for semantic matching
-            key_str = normalized
+            key_str = f"{scope}||{normalized}"
         return hashlib.md5(key_str.encode()).hexdigest()
-    
-    def _get_semantic_key(self, query: str) -> str:
-        """Generate language-agnostic key for cross-language matching"""
+
+    def _get_semantic_key(self, query: str, scope: str = "") -> str:
+        """Generate language-agnostic key for cross-language matching (scoped)."""
         normalized = self._normalize_query(query)
-        return hashlib.md5(normalized.encode()).hexdigest()
+        return hashlib.md5(f"{scope}||{normalized}".encode()).hexdigest()
     
     def _is_expired(self, timestamp: datetime) -> bool:
         """Check if cache entry is expired"""
         return datetime.utcnow() - timestamp > self.ttl
     
+    def _get_embedding_service(self):
+        """Lazy load embedding service"""
+        if self._embedding_service is None:
+            try:
+                from utils.embedding_service import get_embedding_service
+                self._embedding_service = get_embedding_service()
+            except Exception as e:
+                logger.warning(f"Failed to load embedding service: {e}")
+                self._embedding_service = None
+        return self._embedding_service
+    
     def _cleanup_expired(self):
         """Remove expired entries from cache"""
         now = datetime.utcnow()
         expired_keys = [
-            key for key, (_, _, _, timestamp, _) in self._cache.items()
-            if now - timestamp > self.ttl
+            key for key, entry in self._cache.items()
+            if now - entry[3] > self.ttl
         ]
         
         for key in expired_keys:
@@ -124,135 +141,240 @@ class FAQCacheManager:
         
         logger.debug(f"Evicted {num_to_remove} LRU cache entries")
     
-    def get(self, query: str, language: str = "English") -> Optional[Dict[str, any]]:
+    def get(
+        self,
+        query: str,
+        language: str = "English",
+        scope: str = "",
+    ) -> Optional[Dict[str, any]]:
         """
-        Get cached result for query with cross-language lookup
-        
-        Args:
-            query: User query
-            language: Language of the query
-            
-        Returns:
-            Dict with 'result', 'cached_language', 'needs_translation', 'query'
-            or None if not found/expired
+        Get cached result for query with semantic and cross-language lookup.
+
+        Matches are constrained to entries with the same `scope`, so two
+        different retrieval modes / workspaces / cache versions never collide.
+
+        Priority order:
+        1. Exact match (same scope, same query, same language)
+        2. Semantic match (same scope, same language, embeddings)
+        3. Cross-language match (same scope, very high word overlap)
+
+        Returns dict with 'result', 'cached_language', 'needs_translation',
+        'query', 'requires_human' or None if not found/expired.
         """
-        # 1. Try exact match first (same query, same language)
-        exact_key = self._get_cache_key(query, language)
-        
+        # 1. Try exact match first
+        exact_key = self._get_cache_key(query, language, scope)
+
         if exact_key in self._cache:
-            cached_query, result, cached_lang, timestamp, access_count, requires_human = self._cache[exact_key]
-            
-            # Check if expired
+            cached_query, result, cached_lang, timestamp, access_count, requires_human, embedding, cached_scope = self._cache[exact_key]
+
             if self._is_expired(timestamp):
                 del self._cache[exact_key]
                 self._miss_count += 1
                 logger.debug(f"Cache MISS (expired): {query[:50]}")
                 return None
-            
-            # Cache HIT - exact match
-            self._cache[exact_key] = (cached_query, result, cached_lang, timestamp, access_count + 1, requires_human)
+
+            self._cache[exact_key] = (cached_query, result, cached_lang, timestamp, access_count + 1, requires_human, embedding, cached_scope)
             self._hit_count += 1
+            self._exact_hits += 1
             self._popular_faqs[exact_key] += 1
-            
+
             logger.info(f"✓ Cache HIT - Exact match in {language} (saved ~2.5s)")
             return {
                 'result': result,
                 'cached_language': cached_lang,
                 'needs_translation': False,
                 'query': cached_query,
-                'requires_human': requires_human
+                'requires_human': requires_human,
             }
-        
-        # 2. Try cross-language match (same meaning, different language)
-        # Use content-based semantic matching
+
+        # 2. Try semantic match (same scope, same language)
+        from config import settings
+        if settings.SEMANTIC_CACHE_ENABLED:
+            semantic_result = self._semantic_search(query, language, settings.SEMANTIC_CACHE_THRESHOLD, scope)
+            if semantic_result:
+                self._hit_count += 1
+                self._semantic_hits += 1
+                return semantic_result
+
+        # 3. Try cross-language match (same scope, very high word overlap).
+        # Threshold is intentionally strict — false-positives here serve a
+        # different question's answer to the user in the wrong language.
+        cross_lang_threshold = float(
+            getattr(settings, "CROSS_LANGUAGE_CACHE_OVERLAP", 0.92)
+        )
         query_normalized = self._normalize_query(query)
-        
-        if query_normalized:  # Only if we have content words
-            for cache_key, (cached_query, result, cached_lang, timestamp, access_count, requires_human) in list(self._cache.items()):
-                # Skip if same language (already checked in exact match)
-                if cached_lang.lower() == language.lower():
-                    continue
-                
-                # Check if expired
-                if self._is_expired(timestamp):
-                    continue
-                
-                # Compare normalized content
-                cached_normalized = self._normalize_query(cached_query)
-                
-                # Calculate word overlap (simple similarity metric)
-                query_words = set(query_normalized.split())
-                cached_words = set(cached_normalized.split())
-                
-                if query_words and cached_words:
+
+        if query_normalized:
+            query_words = set(query_normalized.split())
+            # Require a minimum number of content words to even consider this
+            # path — short queries make spurious matches too easy.
+            if len(query_words) >= 3:
+                for cache_key, entry in list(self._cache.items()):
+                    cached_query, result, cached_lang, timestamp, access_count, requires_human, embedding, cached_scope = entry
+                    if cached_scope != scope:
+                        continue
+                    if cached_lang.lower() == language.lower():
+                        continue
+                    if self._is_expired(timestamp):
+                        continue
+
+                    cached_normalized = self._normalize_query(cached_query)
+                    cached_words = set(cached_normalized.split())
+                    if not cached_words or len(cached_words) < 3:
+                        continue
+
                     overlap = len(query_words & cached_words) / max(len(query_words), len(cached_words))
-                    
-                    # If high overlap (>70%), consider it a match
-                    if overlap > 0.7:
-                        # Cache HIT - cross-language match
-                        self._cache[cache_key] = (cached_query, result, cached_lang, timestamp, access_count + 1, requires_human)
+                    if overlap >= cross_lang_threshold:
+                        self._cache[cache_key] = (cached_query, result, cached_lang, timestamp, access_count + 1, requires_human, embedding, cached_scope)
                         self._hit_count += 1
                         self._cross_lang_hits += 1
                         self._popular_faqs[cache_key] += 1
-                        
-                        logger.info(f"✓ Cache HIT - Cross-language match ({cached_lang}→{language}, {overlap:.0%} overlap, will translate)")
+
+                        logger.info(
+                            f"✓ Cache HIT - Cross-language match ({cached_lang}→{language}, "
+                            f"{overlap:.0%} overlap, will translate)"
+                        )
                         return {
                             'result': result,
                             'cached_language': cached_lang,
                             'needs_translation': True,
                             'query': cached_query,
-                            'requires_human': requires_human
+                            'requires_human': requires_human,
                         }
-        
-        # Cache MISS
+
         self._miss_count += 1
-        
-        # Track query pattern (for analytics)
-        semantic_key = self._get_semantic_key(query)
-        self._query_patterns[semantic_key] += 1
-        
+        self._query_patterns[self._get_semantic_key(query, scope)] += 1
         logger.debug(f"Cache MISS: {query[:50]} ({language})")
         return None
     
-    def set(self, query: str, result: str, language: str = "English", requires_human: bool = False):
+    def _semantic_search(
+        self,
+        query: str,
+        language: str,
+        threshold: float = 0.85,
+        scope: str = "",
+    ) -> Optional[Dict[str, any]]:
         """
-        Cache a query result with language and handoff metadata
-        
-        Args:
-            query: User query
-            result: Knowledge base result
-            language: Language of the query and result
-            requires_human: Whether this query requires human handoff
+        Search cache using semantic similarity with embeddings, scoped to a
+        single (mode, namespace, version) partition.
+
+        Embeddings are computed on the *plain user query* — never on the
+        scoped cache key — so semantic similarity reflects question meaning
+        and is not inflated by shared scaffolding.
         """
-        # DON'T cache error responses or empty results
+        embedding_service = self._get_embedding_service()
+        if not embedding_service or not embedding_service.is_available():
+            return None
+
+        try:
+            query_embedding = embedding_service.encode(query, normalize=True)
+            if query_embedding is None:
+                return None
+
+            best_match = None
+            best_score = threshold
+            best_key = None
+
+            for cache_key, entry in list(self._cache.items()):
+                cached_query, result, cached_lang, timestamp, access_count, requires_human, cached_embedding, cached_scope = entry
+                if cached_scope != scope:
+                    continue
+                if cached_lang.lower() != language.lower():
+                    continue
+                if self._is_expired(timestamp):
+                    continue
+                if cached_embedding is None:
+                    continue
+
+                similarity = embedding_service.cosine_similarity(query_embedding, cached_embedding)
+
+                if similarity > best_score:
+                    best_score = similarity
+                    best_match = entry
+                    best_key = cache_key
+
+            if best_match and best_key:
+                cached_query, result, cached_lang, timestamp, access_count, requires_human, cached_embedding, cached_scope = best_match
+                self._cache[best_key] = (cached_query, result, cached_lang, timestamp, access_count + 1, requires_human, cached_embedding, cached_scope)
+                self._popular_faqs[best_key] += 1
+
+                logger.info(f"✓ Cache HIT - Semantic match! Similarity: {best_score:.2%} for query: {query[:50]}...")
+                return {
+                    'result': result,
+                    'cached_language': cached_lang,
+                    'needs_translation': False,
+                    'query': cached_query,
+                    'requires_human': requires_human,
+                    'semantic_similarity': best_score,
+                }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error in semantic search: {e}")
+            return None
+    
+    def set(
+        self,
+        query: str,
+        result: str,
+        language: str = "English",
+        requires_human: bool = False,
+        scope: str = "",
+    ):
+        """
+        Cache a query result, partitioned by `scope`.
+
+        `query` should be the *plain user question* — never include retrieval
+        mode / namespace scaffolding in the query string itself; pass those as
+        `scope`. This keeps embeddings and word-overlap comparisons aligned
+        with question meaning instead of scaffolding noise.
+        """
         if not result or result.strip() == "":
-            logger.debug(f"Skipping cache - empty result")
+            logger.debug("Skipping cache - empty result")
             return
-        
-        # Only skip caching for ACTUAL errors, not polite phrases
+
         error_indicators = [
             "knowledge base search error",
             "encountered an error processing",
             "database connection failed",
-            "system error"
+            "system error",
         ]
-        
         result_lower = result.lower()
         if any(indicator in result_lower for indicator in error_indicators):
-            logger.debug(f"Skipping cache - error response detected")
+            logger.debug("Skipping cache - error response detected")
             return
-        
-        # Cleanup expired entries periodically
+
         if len(self._cache) % 100 == 0:
             self._cleanup_expired()
-        
-        # Evict LRU if cache is full
         self._evict_lru()
-        
-        cache_key = self._get_cache_key(query, language)
-        self._cache[cache_key] = (query, result, language, datetime.utcnow(), 1, requires_human)
-        
-        logger.debug(f"Cached result for: {query[:50]} ({language}, requires_human={requires_human})")
+
+        embedding = None
+        from config import settings
+        if settings.SEMANTIC_CACHE_ENABLED:
+            embedding_service = self._get_embedding_service()
+            if embedding_service and embedding_service.is_available():
+                try:
+                    embedding = embedding_service.encode(query, normalize=True)
+                except Exception as e:
+                    logger.warning(f"Failed to generate embedding for cache: {e}")
+
+        cache_key = self._get_cache_key(query, language, scope)
+        self._cache[cache_key] = (
+            query,
+            result,
+            language,
+            datetime.utcnow(),
+            1,
+            requires_human,
+            embedding,
+            scope,
+        )
+
+        logger.debug(
+            f"Cached result for: {query[:50]} (lang={language}, scope={scope[:40]}..., "
+            f"requires_human={requires_human}, has_embedding={embedding is not None})"
+        )
     
     def get_stats(self) -> Dict:
         """
@@ -267,7 +389,7 @@ class FAQCacheManager:
         # Calculate oldest entry
         oldest_age = None
         if self._cache:
-            oldest_timestamp = min(timestamp for _, _, _, timestamp, _ in self._cache.values())
+            oldest_timestamp = min(entry[3] for entry in self._cache.values())
             age_seconds = (datetime.utcnow() - oldest_timestamp).total_seconds()
             oldest_age = f"{age_seconds/3600:.1f}h"
         
@@ -277,7 +399,10 @@ class FAQCacheManager:
             "utilization_pct": (len(self._cache) / self.max_size * 100) if self.max_size > 0 else 0,
             "hit_count": self._hit_count,
             "miss_count": self._miss_count,
+            "exact_hits": self._exact_hits,
+            "semantic_hits": self._semantic_hits,
             "cross_lang_hits": self._cross_lang_hits,
+            "semantic_hit_percentage": (self._semantic_hits / self._hit_count * 100) if self._hit_count > 0 else 0,
             "total_requests": total_requests,
             "hit_rate_pct": hit_rate,
             "unique_queries": len(set(self._query_patterns.keys())),
@@ -304,7 +429,7 @@ class FAQCacheManager:
         result = []
         for cache_key, hit_count in sorted_faqs:
             if cache_key in self._cache:
-                query, result_text, language, timestamp, access_count = self._cache[cache_key]
+                query, result_text, language, timestamp, access_count, requires_human, embedding, _scope = self._cache[cache_key]
                 result.append({
                     'cache_key': cache_key,
                     'query': query,
@@ -381,8 +506,8 @@ class FAQCacheManager:
         # Also search for any entries with similar normalized form
         normalized = self._normalize_query(query)
         keys_to_remove = []
-        for key, (cached_query, _, _, _, _, _) in self._cache.items():
-            if self._normalize_query(cached_query) == normalized:
+        for key, entry in self._cache.items():
+            if self._normalize_query(entry[0]) == normalized:
                 keys_to_remove.append(key)
         
         for key in keys_to_remove:

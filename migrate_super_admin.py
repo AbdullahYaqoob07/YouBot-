@@ -174,7 +174,7 @@ async def apply_migration():
     print("   (admin_id, admin_name, admin_email, role, status, max_queue_size, created_at)")
     print("   VALUES ('super_admin_001', 'Super Admin', 'super@example.com',")
     print("           'super_admin', 'online', 50, NOW());")
-    print("3. Access: http://localhost:5678/static/super_admin_dashboard.html")
+    print("3. Access: http://localhost:8000/static/super_admin_dashboard.html")
 
 if __name__ == "__main__":
     try:

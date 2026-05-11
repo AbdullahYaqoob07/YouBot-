@@ -166,7 +166,7 @@ Write-Host "  3. Run the workflow tests:" -ForegroundColor White
 Write-Host "     python test_workflow.py" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  4. Start the API server:" -ForegroundColor White
-Write-Host "     uvicorn app:app --reload --port 5678" -ForegroundColor Gray
+Write-Host "     uvicorn app:app --reload --port 8000" -ForegroundColor Gray
 Write-Host ""
 
 Write-Host "Documentation:" -ForegroundColor Cyan

@@ -115,7 +115,7 @@ async def test_connection():
         print("Next steps:")
         print("  1. Add GROQ_API_KEY to .env file")
         print("  2. Run: python test_workflow.py")
-        print("  3. Start API: uvicorn app:app --reload --port 5678")
+        print("  3. Start API: uvicorn app:app --reload --port 8000")
         print()
         
         return True

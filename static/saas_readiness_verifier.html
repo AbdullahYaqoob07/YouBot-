@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouBot SaaS Readiness Verifier</title>
+  <style>
+    :root {
+      --bg: #020503;
+      --panel: #07100a;
+      --panel-2: #0a160e;
+      --border: rgba(190, 242, 100, 0.22);
+      --text: #eefeea;
+      --muted: #9bc7a2;
+      --accent: #bef264;
+      --accent-2: #86efac;
+      --ok: #86efac;
+      --warn: #facc15;
+      --fail: #fca5a5;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% -20%, rgba(190, 242, 100, 0.14), transparent 45%),
+        radial-gradient(circle at 85% 130%, rgba(74, 222, 128, 0.1), transparent 42%),
+        linear-gradient(145deg, #020503 0%, #010302 100%);
+      line-height: 1.45;
+    }
+
+    .shell {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .header {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: linear-gradient(155deg, rgba(7, 16, 10, 0.95), rgba(4, 10, 6, 0.96));
+      padding: 16px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .title-wrap h1 {
+      color: var(--accent);
+      font-size: 1.25rem;
+      margin-bottom: 3px;
+    }
+
+    .title-wrap p {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .tag {
+      border: 1px solid var(--border);
+      background: rgba(190, 242, 100, 0.08);
+      color: #d9fbb3;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: linear-gradient(155deg, rgba(8, 18, 11, 0.9), rgba(4, 11, 7, 0.92));
+      padding: 14px;
+    }
+
+    .card h2 {
+      color: #d9fbb3;
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+
+    .help {
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin-top: 4px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .field label {
+      color: #c9f5cf;
+      font-size: 0.8rem;
+      letter-spacing: 0.01em;
+    }
+
+    .field input,
+    .field textarea {
+      width: 100%;
+      border: 1px solid rgba(190, 242, 100, 0.28);
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 0.9rem;
+      background: rgba(2, 8, 4, 0.92);
+      color: #f0ffeb;
+      outline: none;
+    }
+
+    .field textarea {
+      min-height: 84px;
+      resize: vertical;
+    }
+
+    .field input:focus,
+    .field textarea:focus {
+      border-color: #d9f99d;
+      box-shadow: 0 0 0 3px rgba(190, 242, 100, 0.12);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+
+    button {
+      border: 1px solid rgba(190, 242, 100, 0.4);
+      border-radius: 9px;
+      background: rgba(190, 242, 100, 0.9);
+      color: #1c2a0d;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: rgba(134, 239, 172, 0.12);
+      color: #d7f8de;
+    }
+
+    button.ghost {
+      background: rgba(190, 242, 100, 0.08);
+      color: #d7f8de;
+    }
+
+    button:hover {
+      filter: brightness(1.06);
+    }
+
+    .status {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .summary {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(3, 8, 5, 0.9);
+      padding: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 8px;
+    }
+
+    .summary .kpi {
+      border: 1px solid rgba(190, 242, 100, 0.18);
+      border-radius: 8px;
+      padding: 9px;
+      background: rgba(2, 8, 4, 0.7);
+    }
+
+    .summary .label {
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .summary .value {
+      color: var(--text);
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    .table-wrap {
+      margin-top: 12px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+      font-size: 0.83rem;
+      background: rgba(2, 8, 4, 0.75);
+    }
+
+    thead {
+      background: rgba(9, 19, 12, 0.95);
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid rgba(190, 242, 100, 0.14);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #d9fbb3;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .ok { color: var(--ok); font-weight: 700; }
+    .warn { color: var(--warn); font-weight: 700; }
+    .fail { color: var(--fail); font-weight: 700; }
+
+    .output {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(2, 8, 4, 0.82);
+      padding: 10px;
+      min-height: 260px;
+      overflow: auto;
+      font-family: Consolas, monospace;
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+      color: #e4ffe4;
+    }
+
+    @media (max-width: 760px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
+
+      .summary {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="header">
+      <div class="title-wrap">
+        <h1>YouBot SaaS Readiness Verifier</h1>
+        <p>HTML-first system validation for Control, Runtime, Knowledge, and Analytics planes.</p>
+      </div>
+      <span class="tag">No Next.js Required</span>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Request Context</h2>
+        <div class="field">
+          <label for="apiBase">API Base URL</label>
+          <input id="apiBase" type="text" value="http://127.0.0.1:8000" />
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="tenantId">X-Tenant-Id</label>
+            <input id="tenantId" type="text" value="public" />
+          </div>
+          <div class="field">
+            <label for="workspaceId">X-Workspace-Id</label>
+            <input id="workspaceId" type="text" value="default" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="adminKey">X-Admin-Key</label>
+          <input id="adminKey" type="text" placeholder="required for admin and analytics endpoints" />
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="days">Window days</label>
+            <input id="days" type="number" min="1" max="365" value="30" />
+          </div>
+          <div class="field">
+            <label for="timeoutMs">Request timeout (ms)</label>
+            <input id="timeoutMs" type="number" min="1000" step="500" value="12000" />
+          </div>
+        </div>
+        <p class="help">Tip: this tool can run from file:// or /static because your backend allows null and localhost CORS origins.</p>
+      </section>
+
+      <section class="card">
+        <h2>Custom Runtime Probe</h2>
+        <div class="field">
+          <label for="recommendQuery">Recommend payload query</label>
+          <textarea id="recommendQuery">How should we choose retrieval mode for long compliance documents with strict citation requirements?</textarea>
+        </div>
+        <div class="controls">
+          <button onclick="runCoreSmoke()">Run Core Smoke</button>
+          <button class="secondary" onclick="runFullSmoke()">Run Full SaaS Smoke</button>
+          <button class="ghost" onclick="runSingle('health')">Health only</button>
+          <button class="ghost" onclick="clearResults()">Clear results</button>
+        </div>
+        <p class="status" id="statusText">Ready.</p>
+      </section>
+    </div>
+
+    <section class="summary" id="summaryBoard">
+      <div class="kpi"><div class="label">Total Checks</div><div class="value" id="kpiTotal">0</div></div>
+      <div class="kpi"><div class="label">Passed</div><div class="value" id="kpiPass">0</div></div>
+      <div class="kpi"><div class="label">Failed</div><div class="value" id="kpiFail">0</div></div>
+      <div class="kpi"><div class="label">Pass Rate</div><div class="value" id="kpiRate">0%</div></div>
+    </section>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Plane</th>
+            <th>Check</th>
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Status</th>
+            <th>HTTP</th>
+            <th>Duration</th>
+            <th>Summary</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </section>
+
+    <section class="output" id="rawOutput">{}
+    </section>
+  </div>
+
+  <script>
+    const checks = {
+      health: {
+        id: "health",
+        plane: "Platform",
+        label: "Health Endpoint",
+        method: "GET",
+        endpoint: () => "/health",
+      },
+      retrievalProfile: {
+        id: "retrievalProfile",
+        plane: "Control",
+        label: "Retrieval Profile",
+        method: "GET",
+        endpoint: () => "/admin/retrieval/profile",
+      },
+      retrievalRecommend: {
+        id: "retrievalRecommend",
+        plane: "Runtime",
+        label: "Retrieval Recommendation",
+        method: "POST",
+        endpoint: () => "/admin/retrieval/recommend",
+        body: () => ({
+          query: document.getElementById("recommendQuery").value.trim() || "How do we improve response quality?",
+          selectedModeOverride: null,
+        }),
+      },
+      supervisionQueue: {
+        id: "supervisionQueue",
+        plane: "Runtime",
+        label: "Supervision Queue",
+        method: "GET",
+        endpoint: () => "/admin/supervision/conversations",
+      },
+      analyticsOverview: {
+        id: "analyticsOverview",
+        plane: "Analytics",
+        label: "Overview Metrics",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/overview?days=${windowDays()}`,
+      },
+      analyticsUser: {
+        id: "analyticsUser",
+        plane: "Analytics",
+        label: "User Performance",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/user-performance?days=${windowDays()}`,
+      },
+      analyticsAI: {
+        id: "analyticsAI",
+        plane: "Analytics",
+        label: "AI Performance",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/ai-performance?days=${windowDays()}`,
+      },
+      analyticsKB: {
+        id: "analyticsKB",
+        plane: "Knowledge",
+        label: "KB Performance",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/kb-performance?days=${windowDays()}`,
+      },
+      analyticsChannel: {
+        id: "analyticsChannel",
+        plane: "Channel",
+        label: "Channel Performance",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/channel-performance?days=${windowDays()}`,
+      },
+      analyticsTeam: {
+        id: "analyticsTeam",
+        plane: "Supervision",
+        label: "Team Performance",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/team-performance?days=${windowDays()}`,
+      },
+      governanceUsage: {
+        id: "governanceUsage",
+        plane: "Governance",
+        label: "Usage Snapshot",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/governance/usage?days=${windowDays()}`,
+      },
+      governanceQuota: {
+        id: "governanceQuota",
+        plane: "Governance",
+        label: "Quota Forecast",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/governance/quota?days=${windowDays()}`,
+      },
+      alertEvents: {
+        id: "alertEvents",
+        plane: "Governance",
+        label: "Alert Events",
+        method: "GET",
+        endpoint: () => `/tenant-analytics/alerts/events?days=${windowDays()}&limit=10`,
+      },
+    };
+
+    const coreRun = ["health", "retrievalProfile", "retrievalRecommend", "supervisionQueue"];
+    const fullRun = [
+      ...coreRun,
+      "analyticsOverview",
+      "analyticsUser",
+      "analyticsAI",
+      "analyticsKB",
+      "analyticsChannel",
+      "analyticsTeam",
+      "governanceUsage",
+      "governanceQuota",
+      "alertEvents",
+    ];
+
+    function apiBase() {
+      const raw = document.getElementById("apiBase").value.trim();
+      return (raw || "http://127.0.0.1:8000").replace(/\/$/, "");
+    }
+
+    function windowDays() {
+      const parsed = Number(document.getElementById("days").value);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 30;
+      }
+      return parsed;
+    }
+
+    function requestTimeoutMs() {
+      const parsed = Number(document.getElementById("timeoutMs").value);
+      if (!Number.isFinite(parsed) || parsed < 1000) {
+        return 12000;
+      }
+      return parsed;
+    }
+
+    function headers(includeJson = false) {
+      const out = {
+        "X-Tenant-Id": document.getElementById("tenantId").value.trim() || "public",
+        "X-Workspace-Id": document.getElementById("workspaceId").value.trim() || "default",
+      };
+      const adminKey = document.getElementById("adminKey").value.trim();
+      if (adminKey) {
+        out["X-Admin-Key"] = adminKey;
+      }
+      if (includeJson) {
+        out["Content-Type"] = "application/json";
+      }
+      return out;
+    }
+
+    function setStatus(message, isError = false) {
+      const status = document.getElementById("statusText");
+      status.textContent = message;
+      status.style.color = isError ? "var(--fail)" : "var(--muted)";
+    }
+
+    function setRaw(data) {
+      document.getElementById("rawOutput").textContent = JSON.stringify(data, null, 2);
+    }
+
+    function classify(result) {
+      if (result.ok) return "ok";
+      if (result.statusCode === 401 || result.statusCode === 403) return "warn";
+      return "fail";
+    }
+
+    function summaryText(payload) {
+      if (!payload) return "No body";
+
+      if (payload.error) return String(payload.error).slice(0, 120);
+      if (payload.detail) {
+        if (typeof payload.detail === "string") return payload.detail.slice(0, 120);
+        return JSON.stringify(payload.detail).slice(0, 120);
+      }
+      if (payload.status && payload.data && typeof payload.data === "object") {
+        const keys = Object.keys(payload.data);
+        return keys.length ? `data keys: ${keys.slice(0, 4).join(", ")}` : "status success";
+      }
+      const str = JSON.stringify(payload);
+      return str.length > 120 ? `${str.slice(0, 117)}...` : str;
+    }
+
+    async function callCheck(check) {
+      const endpoint = check.endpoint();
+      const url = `${apiBase()}${endpoint}`;
+      const body = check.body ? check.body() : null;
+
+      const started = performance.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), requestTimeoutMs());
+
+      try {
+        const init = {
+          method: check.method,
+          headers: headers(Boolean(body)),
+          signal: controller.signal,
+        };
+        if (body) {
+          init.body = JSON.stringify(body);
+        }
+
+        const response = await fetch(url, init);
+        const contentType = response.headers.get("content-type") || "";
+        let payload;
+
+        if (contentType.includes("application/json")) {
+          payload = await response.json();
+        } else {
+          payload = { raw: await response.text() };
+        }
+
+        const elapsed = Math.round(performance.now() - started);
+        return {
+          id: check.id,
+          plane: check.plane,
+          label: check.label,
+          method: check.method,
+          endpoint,
+          ok: response.ok,
+          statusCode: response.status,
+          durationMs: elapsed,
+          summary: summaryText(payload),
+          payload,
+        };
+      } catch (error) {
+        const elapsed = Math.round(performance.now() - started);
+        return {
+          id: check.id,
+          plane: check.plane,
+          label: check.label,
+          method: check.method,
+          endpoint,
+          ok: false,
+          statusCode: 0,
+          durationMs: elapsed,
+          summary: error?.name === "AbortError" ? "Request timeout" : (error?.message || "Network error"),
+          payload: { error: String(error) },
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function renderRows(results) {
+      const tbody = document.getElementById("resultsBody");
+      tbody.innerHTML = "";
+
+      results.forEach((r) => {
+        const tr = document.createElement("tr");
+        const cls = classify(r);
+        const label = cls === "ok" ? "PASS" : cls === "warn" ? "AUTH" : "FAIL";
+
+        tr.innerHTML = `
+          <td>${r.plane}</td>
+          <td>${r.label}</td>
+          <td>${r.method}</td>
+          <td>${r.endpoint}</td>
+          <td class="${cls}">${label}</td>
+          <td>${r.statusCode || "-"}</td>
+          <td>${r.durationMs} ms</td>
+          <td>${r.summary}</td>
+        `;
+
+        tr.addEventListener("click", () => {
+          setRaw(r);
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      const total = results.length;
+      const passed = results.filter((r) => r.ok).length;
+      const failed = total - passed;
+      const rate = total ? Math.round((passed / total) * 100) : 0;
+
+      document.getElementById("kpiTotal").textContent = String(total);
+      document.getElementById("kpiPass").textContent = String(passed);
+      document.getElementById("kpiFail").textContent = String(failed);
+      document.getElementById("kpiRate").textContent = `${rate}%`;
+    }
+
+    async function runIds(ids) {
+      const results = [];
+      setStatus(`Running ${ids.length} checks...`);
+
+      for (const id of ids) {
+        const check = checks[id];
+        if (!check) continue;
+        const result = await callCheck(check);
+        results.push(result);
+        renderRows(results);
+        setRaw(result);
+      }
+
+      const passed = results.filter((r) => r.ok).length;
+      const failed = results.length - passed;
+      const hasHardFailure = failed > 0;
+
+      setStatus(
+        `Completed ${results.length} checks: ${passed} passed, ${failed} failed.`,
+        hasHardFailure
+      );
+    }
+
+    async function runCoreSmoke() {
+      await runIds(coreRun);
+    }
+
+    async function runFullSmoke() {
+      await runIds(fullRun);
+    }
+
+    async function runSingle(id) {
+      await runIds([id]);
+    }
+
+    function clearResults() {
+      document.getElementById("resultsBody").innerHTML = "";
+      setRaw({});
+      document.getElementById("kpiTotal").textContent = "0";
+      document.getElementById("kpiPass").textContent = "0";
+      document.getElementById("kpiFail").textContent = "0";
+      document.getElementById("kpiRate").textContent = "0%";
+      setStatus("Cleared. Ready.");
+    }
+  </script>
+</body>
+</html>

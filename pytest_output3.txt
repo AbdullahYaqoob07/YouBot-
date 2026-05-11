@@ -1,0 +1,187 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0 -- c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\langgraph_agent
+plugins: anyio-4.13.0, langsmith-0.7.24, asyncio-1.3.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 3 items
+
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio FAILED [ 33%]
+tests/test_phase6_enterprise_stabilization.py::test_mcp_client_pool_is_singleton PASSED [ 66%]
+tests/test_phase6_enterprise_stabilization.py::test_async_mysql_saver_checkpointing FAILED [100%]
+
+================================== FAILURES ===================================
+____________________ test_admin_mcp_server_rejection_stdio ____________________
+
+app_client = (<starlette.testclient.TestClient object at 0x000001D81E0CCD70>, <module 'app' from 'c:\\Users\\ABDULLAH\\OneDrive\\Desktop\\YouBot\\langgraph_agent\\app.py'>)
+
+    def test_admin_mcp_server_rejection_stdio(app_client):
+        client, app_module = app_client
+    
+        # Try creating an stdio server
+        post_payload = {
+            "name": "Local Shell Server",
+            "connection_type": "stdio",
+            "connection_url": "python -m some_local_server",
+            "config_json": {}
+        }
+        post_resp = client.post("/admin/workspaces/workspace_test/mcp-servers", headers=ADMIN_HEADERS, json=post_payload)
+    
+        # It must be rejected because standard I/O opens unmonitored sub-processes
+        assert post_resp.status_code == 400
+>       assert "stdio connections are completely disabled for security" in post_resp.json()["detail"]
+E       assert 'stdio connections are completely disabled for security' in "Security violation: 'stdio' connection types are disabled for tenant deployments. Use 'sse' only."
+
+tests\test_phase6_enterprise_stabilization.py:50: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+2026-04-19 14:17:08.156 | INFO     | utils.faq_cache:__init__:55 - Enhanced FAQ Cache initialized: max_size=2000, ttl=24h, multilingual=True, semantic=True
+____________________ test_async_mysql_saver_checkpointing _____________________
+
+    @pytest.mark.asyncio
+    async def test_async_mysql_saver_checkpointing():
+        # Because we are testing against a LIVE DB context as requested by the user:
+        saver = AsyncMySQLSaver()
+        thread_config = {"configurable": {"thread_id": "test_thread_12345"}}
+    
+        checkpoint_mock = {
+            "v": 1,
+            "id": "chk_001",
+            "ts": "2026-04-18T10:00:00Z",
+            "channel_values": {"messages": []},
+            "channel_versions": {},
+            "versions_seen": {}
+        }
+    
+        metadata_mock = {
+            "source": "loop", "step": 1
+        }
+    
+        # Save the blob into the database (MySQL / Supabase active daemon)
+        res = await saver.aput(thread_config, checkpoint_mock, metadata_mock, {})
+        assert res["configurable"]["checkpoint_id"] == "chk_001"
+    
+        # Retrieve it back
+>       fetched = await saver.aget_tuple(thread_config)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_phase6_enterprise_stabilization.py:82: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+database\checkpointer.py:27: in aget_tuple
+    checkpoint=self.serde.loads_typed(("json", row.checkpoint_blob)),
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\.venv\Lib\site-packages\langgraph\checkpoint\serde\jsonplus.py:252: in loads_typed
+    return json.loads(data_, object_hook=self._reviver)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+s = b'\x86\xa1v\x01\xa2id\xa7chk_001\xa2ts\xb42026-04-18T10:00:00Z\xaechannel_values\x81\xa8messages\x90\xb0channel_versions\x80\xadversions_seen\x80'
+cls = None
+object_hook = <bound method JsonPlusSerializer._reviver of <langgraph.checkpoint.serde.jsonplus.JsonPlusSerializer object at 0x000001D81D985AC0>>
+parse_float = None, parse_int = None, parse_constant = None
+object_pairs_hook = None, kw = {}
+
+    def loads(s, *, cls=None, object_hook=None, parse_float=None,
+            parse_int=None, parse_constant=None, object_pairs_hook=None, **kw):
+        """Deserialize ``s`` (a ``str``, ``bytes`` or ``bytearray`` instance
+        containing a JSON document) to a Python object.
+    
+        ``object_hook`` is an optional function that will be called with the
+        result of any object literal decode (a ``dict``). The return value of
+        ``object_hook`` will be used instead of the ``dict``. This feature
+        can be used to implement custom decoders (e.g. JSON-RPC class hinting).
+    
+        ``object_pairs_hook`` is an optional function that will be called with the
+        result of any object literal decoded with an ordered list of pairs.  The
+        return value of ``object_pairs_hook`` will be used instead of the ``dict``.
+        This feature can be used to implement custom decoders.  If ``object_hook``
+        is also defined, the ``object_pairs_hook`` takes priority.
+    
+        ``parse_float``, if specified, will be called with the string
+        of every JSON float to be decoded. By default this is equivalent to
+        float(num_str). This can be used to use another datatype or parser
+        for JSON floats (e.g. decimal.Decimal).
+    
+        ``parse_int``, if specified, will be called with the string
+        of every JSON int to be decoded. By default this is equivalent to
+        int(num_str). This can be used to use another datatype or parser
+        for JSON integers (e.g. float).
+    
+        ``parse_constant``, if specified, will be called with one of the
+        following strings: -Infinity, Infinity, NaN.
+        This can be used to raise an exception if invalid JSON numbers
+        are encountered.
+    
+        To use a custom ``JSONDecoder`` subclass, specify it with the ``cls``
+        kwarg; otherwise ``JSONDecoder`` is used.
+        """
+        if isinstance(s, str):
+            if s.startswith('\ufeff'):
+                raise JSONDecodeError("Unexpected UTF-8 BOM (decode using utf-8-sig)",
+                                      s, 0)
+        else:
+            if not isinstance(s, (bytes, bytearray)):
+                raise TypeError(f'the JSON object must be str, bytes or bytearray, '
+                                f'not {s.__class__.__name__}')
+>           s = s.decode(detect_encoding(s), 'surrogatepass')
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           UnicodeDecodeError: 'utf-8' codec can't decode byte 0x86 in position 0: invalid start byte
+
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\json\__init__.py:341: UnicodeDecodeError
+============================== warnings summary ===============================
+config.py:12
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\langgraph_agent\config.py:12: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\langgraph_agent\app.py:185: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\.venv\Lib\site-packages\fastapi\applications.py:4598: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\langgraph_agent\app.py:215: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\langgraph_agent\app.py:225: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class MessageRequest(BaseModel):
+
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\langgraph_agent\routers\admin_api.py:44: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class WorkspaceLLMConfigRequest(BaseModel):
+
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\langgraph_agent\routers\admin_api.py:244: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class ProviderModelsRequest(BaseModel):
+
+tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\langgraph_agent\app.py:549: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class AnalyticsAlertRuleRequest(BaseModel):
+
+tests/test_phase6_enterprise_stabilization.py::test_async_mysql_saver_checkpointing
+  c:\Users\ABDULLAH\OneDrive\Desktop\YouBot\.venv\Lib\site-packages\sqlalchemy\sql\schema.py:3624: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_phase6_enterprise_stabilization.py::test_admin_mcp_server_rejection_stdio
+FAILED tests/test_phase6_enterprise_stabilization.py::test_async_mysql_saver_checkpointing
+================== 2 failed, 1 passed, 10 warnings in 17.11s ==================

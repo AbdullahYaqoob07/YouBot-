@@ -76,5 +76,5 @@ Write-Host "  Database Setup Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "You can now start the server:" -ForegroundColor Yellow
-Write-Host "  python -m uvicorn app:app --reload --port 5678" -ForegroundColor White
+Write-Host "  python -m uvicorn app:app --reload --port 8000" -ForegroundColor White
 Write-Host ""

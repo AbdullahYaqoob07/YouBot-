@@ -8,6 +8,28 @@ from database.models import AdminQueue, AdminAvailability, get_async_session
 from loguru import logger
 
 
+async def _translate_to_english(
+    text: str,
+    source_language: str,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> str:
+    """Translate text to English for admin dashboard. Returns original on failure."""
+    if not source_language or source_language.lower() in ("english", "en"):
+        return text
+    try:
+        from nodes.comprehension_agent import translate_to_english
+        return await translate_to_english(
+            text,
+            source_language,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+        )
+    except Exception as e:
+        logger.warning(f"Translation to English failed: {e}")
+        return text
+
+
 async def assign_to_admin(
     session_id: str,
     user_id: str,
@@ -16,7 +38,9 @@ async def assign_to_admin(
     language: str,
     channel: str,
     handoff_reason: str,
-    unsolved_score: float
+    unsolved_score: float,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
 ) -> Optional[Dict]:
     """
     Assign query to available admin using ROUND-ROBIN LOAD BALANCING
@@ -50,14 +74,18 @@ async def assign_to_admin(
             assigned_admin = None
             async with session.begin():
                 # Select a candidate admin and lock the row for update
+                filters = [
+                    AdminAvailability.status == 'online',
+                    AdminAvailability.current_queue_count < AdminAvailability.max_queue_size
+                ]
+                if tenant_id:
+                    filters.append(AdminAvailability.tenant_id == tenant_id)
+                if workspace_id:
+                    filters.append(AdminAvailability.workspace_id == workspace_id)
+
                 query = (
                     select(AdminAvailability)
-                    .where(
-                        and_(
-                            AdminAvailability.status == 'online',
-                            AdminAvailability.current_queue_count < AdminAvailability.max_queue_size
-                        )
-                    )
+                    .where(and_(*filters))
                     .order_by(AdminAvailability.current_queue_count, AdminAvailability.last_assigned_at)
                     .limit(1)
                     .with_for_update()
@@ -74,6 +102,8 @@ async def assign_to_admin(
                     queue_entry = AdminQueue(
                         session_id=session_id,
                         user_id=user_id,
+                        tenant_id=tenant_id,
+                        workspace_id=workspace_id,
                         admin_id=admin.admin_id,
                         user_message=user_message,
                         ai_response=ai_response,
@@ -99,6 +129,8 @@ async def assign_to_admin(
                     queue_entry = AdminQueue(
                         session_id=session_id,
                         user_id=user_id,
+                        tenant_id=tenant_id,
+                        workspace_id=workspace_id,
                         user_message=user_message,
                         ai_response=ai_response,
                         status='pending',
@@ -120,19 +152,31 @@ async def assign_to_admin(
         return None
 
 
-async def get_admin_queue(status: Optional[str] = None) -> List[Dict]:
+async def get_admin_queue(
+    status: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> List[Dict]:
     """
-    Get admin queue entries
+    Get admin queue entries with messages translated to English for admin readability.
+    
+    Admin dashboard always sees English messages regardless of user's language.
+    Original language is preserved in the 'language' field.
     
     Args:
         status: Filter by status (pending, assigned, resolved)
         
     Returns:
-        List of queue entries
+        List of queue entries with English-translated messages
     """
     try:
         async with get_async_session() as session:
             query = select(AdminQueue)
+
+            if tenant_id:
+                query = query.where(AdminQueue.tenant_id == tenant_id)
+            if workspace_id:
+                query = query.where(AdminQueue.workspace_id == workspace_id)
             
             if status:
                 query = query.where(AdminQueue.status == status)
@@ -142,21 +186,36 @@ async def get_admin_queue(status: Optional[str] = None) -> List[Dict]:
             result = await session.execute(query)
             entries = result.scalars().all()
             
-            return [
-                {
+            # Build queue items - only translate if language is explicitly non-English
+            queue_items = []
+            for entry in entries:
+                user_message_english = entry.user_message
+                
+                # Only translate if we know language is non-English
+                needs_translation = entry.language and entry.language.lower() not in ("english", "en", "", "unknown")
+                if needs_translation and entry.user_message:
+                    user_message_english = await _translate_to_english(
+                        entry.user_message,
+                        entry.language,
+                        tenant_id=entry.tenant_id,
+                        workspace_id=entry.workspace_id,
+                    )
+                
+                queue_items.append({
                     "id": entry.id,
                     "session_id": entry.session_id,
                     "user_id": entry.user_id,
                     "admin_id": entry.admin_id,
-                    "user_message": entry.user_message,
+                    "user_message": user_message_english,  # Translated to English
+                    "user_message_original": entry.user_message,  # Original language
                     "status": entry.status,
                     "priority": entry.priority,
-                    "language": entry.language,
+                    "language": entry.language,  # User's actual language
                     "handoff_reason": entry.handoff_reason,
                     "created_at": entry.created_at.isoformat() if entry.created_at else None
-                }
-                for entry in entries
-            ]
+                })
+            
+            return queue_items
             
     except Exception as e:
         logger.error(f"Error fetching admin queue: {str(e)}")
@@ -166,7 +225,9 @@ async def get_admin_queue(status: Optional[str] = None) -> List[Dict]:
 async def update_queue_status(
     queue_id: int,
     status: str,
-    admin_id: Optional[str] = None
+    admin_id: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
 ):
     """
     Update queue entry status
@@ -179,6 +240,10 @@ async def update_queue_status(
     try:
         async with get_async_session() as session:
             query = select(AdminQueue).where(AdminQueue.id == queue_id)
+            if tenant_id:
+                query = query.where(AdminQueue.tenant_id == tenant_id)
+            if workspace_id:
+                query = query.where(AdminQueue.workspace_id == workspace_id)
             result = await session.execute(query)
             entry = result.scalar_one_or_none()
             

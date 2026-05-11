@@ -6,12 +6,13 @@ from state import AgentState
 from database.admin_queue import assign_to_admin
 from database.conversation import save_conversation
 from database.analytics import log_analytics_event
+from database.llm_provider_config_runtime import get_workspace_llm_runtime_config
+from llm.factory import create_chat_model
 from config import settings
 from loguru import logger
 import time
 from datetime import datetime
 import pytz
-from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 
 
@@ -34,7 +35,14 @@ def is_within_office_hours() -> bool:
     return office_start <= now <= office_end
 
 
-async def translate_admin_message(user_message: str, english_template: str, admin_name: str = None, is_social_media: bool = False) -> str:
+async def translate_admin_message(
+    user_message: str,
+    english_template: str,
+    tenant_id: str,
+    workspace_id: str,
+    admin_name: str = None,
+    is_social_media: bool = False,
+) -> str:
     """
     Use LLM to translate admin handler messages to user's language
     
@@ -48,11 +56,12 @@ async def translate_admin_message(user_message: str, english_template: str, admi
         Translated message in user's language
     """
     try:
-        llm = ChatGroq(
-            model=settings.GROQ_MODEL,
-            temperature=0.1,  # Low temperature for consistent translation
+        runtime_llm = await get_workspace_llm_runtime_config(tenant_id, workspace_id)
+        llm = create_chat_model(
+            runtime=runtime_llm,
+            temperature=0.1,
             max_tokens=300,
-            api_key=settings.GROQ_API_KEY
+            timeout_seconds=settings.GROQ_REQUEST_TIMEOUT,
         )
         
         # Build translation prompt
@@ -100,8 +109,17 @@ async def admin_handler_node(state: AgentState) -> AgentState:
     """
     logger.info(f"Admin handoff for user {state['user_id']}")
     
+    # Ensure critical keys exist to prevent LangGraph KeyErrors
+    if "error" not in state or state["error"] is None:
+        state["error"] = ""
+    if "ai_response" not in state or state["ai_response"] is None:
+        state["ai_response"] = ""
+    if "detected_language" not in state:
+        state["detected_language"] = None
+        
     # ⚡ CHECK: If admin has actively taken over, skip auto-assignment message
-    if state.get("handoff_reason", "").startswith("Admin takeover"):
+    handoff_reason = state.get("handoff_reason") or ""
+    if handoff_reason.startswith("Admin takeover"):
         logger.info("Admin active - skipping auto-response")
         return state
     
@@ -115,7 +133,9 @@ async def admin_handler_node(state: AgentState) -> AgentState:
             language=state.get("detected_language", "English"),
             channel=state["channel"],
             handoff_reason=state.get("handoff_reason", "Unknown"),
-            unsolved_score=1.0 - state.get("classification_confidence", 0.5)
+            unsolved_score=1.0 - state.get("classification_confidence", 0.5),
+            tenant_id=state.get("tenant_id"),
+            workspace_id=state.get("workspace_id"),
         )
         
         if admin:
@@ -129,11 +149,13 @@ async def admin_handler_node(state: AgentState) -> AgentState:
             social_media_channels = ["instagram", "facebook", "whatsapp", "twitter", "linkedin", "tiktok"]
             is_social_media = any(social in channel for social in social_media_channels)
             
-            english_msg = f"Your query has been forwarded to {admin['admin_name']}. They will assist you shortly. Estimated wait time: 2-5 minutes."
+            english_msg = f"Great news! I've connected you with {admin['admin_name']} from our expert team. They'll be with you shortly to provide personalized assistance. Expected wait: just 2-5 minutes."
             
             state["ai_response"] = await translate_admin_message(
                 user_message=state["message"],
                 english_template=english_msg,
+                tenant_id=state.get("tenant_id"),
+                workspace_id=state.get("workspace_id"),
                 admin_name=admin['admin_name'],
                 is_social_media=is_social_media
             )
@@ -152,14 +174,16 @@ async def admin_handler_node(state: AgentState) -> AgentState:
             
             if within_hours:
                 # During office hours - show estimated time
-                english_msg = "All our representatives are currently busy. Your query has been queued and someone will assist you soon. Estimated wait time: 2-5 minutes."
+                english_msg = "Thanks for your patience! Our team is currently helping other customers, but we've added you to the priority queue. Someone will be with you in about 2-5 minutes."
             else:
                 # Outside office hours - no time estimate
-                english_msg = "Your query has been forwarded to our team. We will respond during our office hours (Monday-Friday, 10:00 AM - 6:00 PM Swedish time)."
+                english_msg = "Thanks for reaching out! Our office hours are Monday-Friday, 10:00 AM - 6:00 PM (Swedish time). We've saved your query and our team will get back to you first thing when we're back online."
             
             state["ai_response"] = await translate_admin_message(
                 user_message=state["message"],
                 english_template=english_msg,
+                tenant_id=state.get("tenant_id"),
+                workspace_id=state.get("workspace_id"),
                 is_social_media=is_social_media
             )
             
@@ -169,8 +193,9 @@ async def admin_handler_node(state: AgentState) -> AgentState:
         logger.error(f"Error in admin handler: {str(e)}")
         state["error"] = str(e)
         state["ai_response"] = (
-            "We're experiencing technical difficulties. "
-            "Please try again shortly or email us at support@swedenrelocators.com"
+            "We're experiencing a small technical issue on our end. "
+            "Please try again in a moment, or reach out to us at support@swedenrelocators.com. "
+            "We're here to help!"
         )
     
     return state
@@ -202,6 +227,8 @@ async def log_conversation_node(state: AgentState) -> AgentState:
             user_id=state["user_id"],
             user_message=state["message"],
             assistant_response=state["ai_response"],
+            tenant_id=state.get("tenant_id"),
+            workspace_id=state.get("workspace_id"),
             language=state.get("detected_language"),
             channel=state["channel"],
             sentiment=state.get("sentiment", "neutral"),
@@ -220,7 +247,9 @@ async def log_conversation_node(state: AgentState) -> AgentState:
             ai_response=state["ai_response"],
             language=state.get("detected_language"),
             ai_triggered_handoff=state.get("requires_human", False),
-            handoff_reason=state.get("handoff_reason")
+            handoff_reason=state.get("handoff_reason"),
+            tenant_id=state.get("tenant_id"),
+            workspace_id=state.get("workspace_id"),
         )
         
         # Log analytics event
@@ -234,6 +263,8 @@ async def log_conversation_node(state: AgentState) -> AgentState:
             event_type=event_type,
             session_id=state["session_id"],
             user_id=state["user_id"],
+            tenant_id=state.get("tenant_id"),
+            workspace_id=state.get("workspace_id"),
             language=state.get("detected_language"),
             channel=state["channel"],
             sentiment=state.get("sentiment", "neutral"),

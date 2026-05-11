@@ -128,13 +128,13 @@ To populate vector store with knowledge base:
     print_step(8, "Testing the System")
     print("""
 1. Start the server:
-   uvicorn app:app --reload --port 5678
+    uvicorn app:app --reload --port 8000
 
 2. Test health endpoint:
-   curl http://localhost:5678/health
+    curl http://localhost:8000/health
 
 3. Send test message:
-   curl -X POST http://localhost:5678/webhook/ai-agent \\
+    curl -X POST http://localhost:8000/webhook/ai-agent \\
      -H "Content-Type: application/json" \\
      -d '{"message": "I want to move to Sweden", "userId": "test_001"}'
 
@@ -150,7 +150,7 @@ For production deployment:
 1. Set DEBUG=False in .env
 
 2. Use production server:
-   gunicorn app:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:5678
+    gunicorn app:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
 3. Use reverse proxy (nginx):
    server {
@@ -158,7 +158,7 @@ For production deployment:
        server_name your-domain.com;
        
        location / {
-           proxy_pass http://localhost:5678;
+           proxy_pass http://localhost:8000;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
        }

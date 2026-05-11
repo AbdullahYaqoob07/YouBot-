@@ -3,7 +3,7 @@ import httpx
 import json
 import time
 
-URL = "http://127.0.0.1:5678/webhook/ai-agent"
+URL = "http://127.0.0.1:8000/webhook/ai-agent"
 HEADERS = {"Content-Type": "application/json"}
 
 async def test_multilingual():

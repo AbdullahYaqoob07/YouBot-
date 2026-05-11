@@ -1,0 +1,125 @@
+== [supabase_comprehensive_schema.sql] FAIL
+L:   2 | P:   1 | LT05 | Line is too long (105 > 80). [layout.long_lines]
+L:  34 | P:   5 | RF04 | Keywords should not be used as identifiers.
+                       | [references.keywords]
+L:  35 | P:   5 | LT05 | Line is too long (93 > 80). [layout.long_lines]
+L:  36 | P:   5 | LT05 | Line is too long (95 > 80). [layout.long_lines]
+L:  37 | P:   5 | RF04 | Keywords should not be used as identifiers.
+                       | [references.keywords]
+L:  44 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L:  44 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L:  46 | P:   5 | RF04 | Keywords should not be used as identifiers.
+                       | [references.keywords]
+L:  48 | P:   5 | LT05 | Line is too long (91 > 80). [layout.long_lines]
+L:  57 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L:  57 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L:  58 | P:   5 | LT05 | Line is too long (82 > 80). [layout.long_lines]
+L:  58 | P:  60 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L:  63 | P:   5 | RF04 | Keywords should not be used as identifiers.
+                       | [references.keywords]
+L:  75 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L:  75 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L:  76 | P:   5 | LT05 | Line is too long (82 > 80). [layout.long_lines]
+L:  76 | P:  60 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L:  77 | P:   5 | LT05 | Line is too long (86 > 80). [layout.long_lines]
+L:  77 | P:  64 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L:  78 | P:   5 | LT05 | Line is too long (115 > 80). [layout.long_lines]
+L:  79 | P:   5 | LT05 | Line is too long (119 > 80). [layout.long_lines]
+L: 100 | P:   1 | LT05 | Line is too long (85 > 80). [layout.long_lines]
+L: 104 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L: 104 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 105 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L: 105 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 107 | P:   5 | LT05 | Line is too long (94 > 80). [layout.long_lines]
+L: 141 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L: 141 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 142 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L: 142 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 144 | P:  28 | LT01 | Expected single whitespace between comma ',' and numeric
+                       | literal. [layout.spacing]
+L: 165 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L: 165 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 166 | P:   5 | LT05 | Line is too long (82 > 80). [layout.long_lines]
+L: 166 | P:  60 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 174 | P:  38 | LT01 | Expected single whitespace between comma ',' and numeric
+                       | literal. [layout.spacing]
+L: 175 | P:  39 | LT01 | Expected single whitespace between comma ',' and numeric
+                       | literal. [layout.spacing]
+L: 176 | P:  24 | LT01 | Expected single whitespace between comma ',' and numeric
+                       | literal. [layout.spacing]
+L: 188 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L: 188 | P:  66 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 189 | P:   5 | LT05 | Line is too long (82 > 80). [layout.long_lines]
+L: 189 | P:  60 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 190 | P:   5 | RF04 | Keywords should not be used as identifiers.
+                       | [references.keywords]
+L: 202 | P:   5 | RF04 | Keywords should not be used as identifiers.
+                       | [references.keywords]
+L: 219 | P:   5 | RF04 | Keywords should not be used as identifiers.
+                       | [references.keywords]
+L: 243 | P:  57 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 244 | P:  51 | LT01 | Expected single whitespace between naked identifier and
+                       | start bracket '('. [layout.spacing]
+L: 246 | P:   5 | RF04 | Keywords should not be used as identifiers.
+                       | [references.keywords]
+L: 259 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 262 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 265 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 268 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 271 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 275 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 278 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 279 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 280 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 283 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 286 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 289 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 292 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 295 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 298 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 301 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 304 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 307 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 308 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 311 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 314 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 317 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 320 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 323 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 358 | P:   1 | LT05 | Line is too long (100 > 80). [layout.long_lines]
+L: 363 | P:   1 | LT05 | Line is too long (90 > 80). [layout.long_lines]
+L: 368 | P:   1 | LT05 | Line is too long (108 > 80). [layout.long_lines]
+L: 373 | P:   1 | LT05 | Line is too long (91 > 80). [layout.long_lines]
+L: 422 | P:   1 | LT05 | Line is too long (94 > 80). [layout.long_lines]
+L: 425 | P:   1 | LT05 | Line is too long (81 > 80). [layout.long_lines]
+L: 431 | P:   1 | ST06 | Select wildcards then simple targets before calculations
+                       | and aggregates. [structure.column_order]
+L: 435 | P:   5 | LT05 | Line is too long (99 > 80). [layout.long_lines]
+L: 442 | P:  19 | LT01 | Expected single whitespace between comma ',' and numeric
+                       | literal. [layout.spacing]
+L: 443 | P:  27 | AL01 | Implicit/explicit aliasing of table. [aliasing.table]
+L: 444 | P:   1 | AM05 | Join clauses should be fully qualified. [ambiguous.join]
+L: 444 | P:  35 | AL01 | Implicit/explicit aliasing of table. [aliasing.table]
+L: 445 | P:   8 | ST09 | Joins should list the table referenced earlier first.
+                       | [structure.join_condition_order]
+L: 446 | P:   1 | LT05 | Line is too long (81 > 80). [layout.long_lines]
+L: 450 | P:   1 | LT02 | Line should not be indented. [layout.indent]
+L: 450 | P:   5 | LT05 | Line is too long (88 > 80). [layout.long_lines]
+L: 501 | P:  27 | AL01 | Implicit/explicit aliasing of table. [aliasing.table]
+L: 504 | P:   1 | LT05 | Line is too long (82 > 80). [layout.long_lines]
+All Finished!

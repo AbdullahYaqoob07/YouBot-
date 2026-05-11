@@ -1,13 +1,15 @@
 """
 FastAPI application - REST API server (replaces n8n webhook)
 """
-from fastapi import FastAPI, HTTPException, Request, Header, BackgroundTasks, Depends, Security, UploadFile, File
+import os
+
+from fastapi import FastAPI, HTTPException, Request, Header, BackgroundTasks, Depends, Security, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Optional, Any
 import time
 import asyncio
 import re
@@ -22,8 +24,31 @@ from graph import process_message, resume_conversation, get_conversation_state
 from config import settings
 from database.conversation import get_conversation_history as db_get_history
 from database.admin_queue import get_admin_queue, update_queue_status
-from database.models import AdminAvailability, get_async_session
-from sqlalchemy import select, update as sql_update, desc
+from database.llm_provider_config_runtime import (
+    get_workspace_llm_config,
+    upsert_workspace_llm_config,
+)
+from llm.factory import (
+    fetch_provider_models,
+    get_registered_providers,
+    normalize_provider,
+    validate_model_name,
+)
+from database.models import AdminAvailability, ClientApiKey, get_async_session, bootstrap_runtime_tables
+from database.ingestion_jobs import (
+    create_knowledge_source,
+    list_knowledge_sources,
+    create_ingestion_job,
+    list_ingestion_jobs,
+    run_ingestion_job,
+)
+from database.retrieval_modes import (
+    get_retrieval_profile,
+    select_retrieval_mode,
+    upsert_retrieval_profile,
+)
+from tenant_context import TenantContext, resolve_tenant_context, validate_context_identifier
+from sqlalchemy import select, update as sql_update, desc, inspect
 from loguru import logger
 from utils.faq_cache import faq_cache
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -130,17 +155,26 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Add CORS middleware - RESTRICTED to allowed origins
+# Add CORS middleware.
+# - Keeps explicit allow list from settings.
+# - Also allows localhost/127.0.0.1 on any port for local validators.
+# - Includes "null" origin to support file-based browser previews.
+cors_allow_origins = list(settings.ALLOWED_ORIGINS or [])
+if "null" not in cors_allow_origins:
+    cors_allow_origins.append("null")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=cors_allow_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
 # Mount static files for frontend
-app.mount("/static", StaticFiles(directory="static"), name="static")
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 # Redis cache instance (initialized at startup)
@@ -152,6 +186,14 @@ redis_cache = None
 async def startup_event():
     """Pre-load embeddings, vector store, and initialize Redis on startup"""
     global redis_cache
+
+    # Ensure ORM runtime tables exist in the active runtime database.
+    try:
+        verified_tables = await bootstrap_runtime_tables()
+        logger.info("✅ Runtime tables verified/created: {}", len(verified_tables))
+    except Exception as e:
+        logger.opt(exception=True).error("❌ Failed to bootstrap runtime tables: {}", e)
+        raise
     
     # Initialize Redis cache
     try:
@@ -160,7 +202,7 @@ async def startup_event():
         await redis_cache.connect()
         logger.info("✅ Redis cache connected!")
     except Exception as e:
-        logger.warning(f"⚠️ Redis not available, using in-memory cache: {e}")
+        logger.warning("⚠️ Redis not available, using in-memory cache: {}", e)
         redis_cache = None
     
     # Pre-load embeddings
@@ -186,9 +228,16 @@ class MessageRequest(BaseModel):
     userId: str = Field(..., alias="userId", description="Unique user identifier", min_length=1, max_length=100)
     sessionId: Optional[str] = Field(None, alias="sessionId", description="Session ID (auto-generated if not provided)")
     channel: str = Field(default="webhook", description="Channel: whatsapp, facebook, instagram, email, webhook")
+    tenantId: Optional[str] = Field(None, alias="tenantId", description="Tenant identifier", max_length=80)
+    workspaceId: Optional[str] = Field(None, alias="workspaceId", description="Workspace identifier", max_length=80)
     userName: Optional[str] = Field(None, alias="userName", description="User name", max_length=200)
     userEmail: Optional[str] = Field(None, alias="userEmail", description="User email", max_length=200)
     userPhone: Optional[str] = Field(None, alias="userPhone", description="User phone", max_length=50)
+    retrievalMode: Optional[str] = Field(
+        None,
+        alias="retrievalMode",
+        description="Optional retrieval mode override: 'rag', 'hybrid', or 'page_index'",
+    )
     
     @field_validator('message')
     @classmethod
@@ -204,7 +253,29 @@ class MessageRequest(BaseModel):
         if v.lower() not in allowed:
             raise ValueError(f'Channel must be one of: {allowed}')
         return v.lower()
-    
+
+    @field_validator('tenantId')
+    @classmethod
+    def validate_tenant_id(cls, v: Optional[str]) -> Optional[str]:
+        """Validate tenant identifier when provided"""
+        return validate_context_identifier(v, "tenant_id")
+
+    @field_validator('workspaceId')
+    @classmethod
+    def validate_workspace_id(cls, v: Optional[str]) -> Optional[str]:
+        """Validate workspace identifier when provided"""
+        return validate_context_identifier(v, "workspace_id")
+
+    @field_validator('retrievalMode')
+    @classmethod
+    def validate_retrieval_mode(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        normalized = v.strip().lower()
+        if normalized not in {"rag", "hybrid", "page_index"}:
+            raise ValueError("retrievalMode must be one of: rag, hybrid, page_index")
+        return normalized
+
     class Config:
         populate_by_name = True
 
@@ -216,6 +287,8 @@ class MessageResponse(BaseModel):
     sessionId: str
     language: Optional[str]
     handoff: bool
+    modelUsed: Optional[str] = None
+    retrievalMode: Optional[str] = None
     assignedTo: Optional[str] = None
     queueStatus: Optional[str] = None
     processingTimeMs: int
@@ -247,75 +320,154 @@ async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> O
              )
     return api_key
 
-async def verify_admin_key(admin_key: Optional[str] = Security(admin_key_header)) -> str:
-    """Verify admin API key for admin endpoints"""
+async def verify_admin_key(
+    admin_key: Optional[str] = Security(admin_key_header),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> str:
+    """Verify admin API key for admin endpoints.
+
+    Accepts either the configured ADMIN_API_KEY or a Supabase Bearer token so
+    that any authenticated frontend user can reach admin/supervision endpoints
+    without needing to distribute a separate admin secret.
+    """
+    # 1. Configured admin key always works
+    if settings.ADMIN_API_KEY and admin_key == settings.ADMIN_API_KEY:
+        return admin_key
+
+    # 2. Any authenticated user (valid Supabase Bearer token) is allowed
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[len("Bearer "):].strip()
+        if token:
+            return token
+
+    # 3. Debug fallback when no admin key is configured at all
     if not settings.ADMIN_API_KEY:
-        # If no admin key configured, deny all admin access in production
         if not settings.DEBUG:
             raise HTTPException(status_code=403, detail="Admin access not configured")
         return "debug_admin"
-    
-    if not admin_key or admin_key != settings.ADMIN_API_KEY:
-        logger.warning(f"Invalid admin key attempt")
-        raise HTTPException(
-            status_code=403, 
-            detail="Invalid or missing admin key",
-            headers={"WWW-Authenticate": "AdminKey"}
+
+    logger.warning("Invalid admin credentials attempt")
+    raise HTTPException(
+        status_code=403,
+        detail="Invalid or missing admin credentials",
+        headers={"WWW-Authenticate": "AdminKey"},
+    )
+
+async def verify_client_key(client_key: Optional[str] = Security(api_key_header)) -> ClientApiKey:
+    """Verify generic client API key (for drop-in widgets or custom apps)."""
+    if not client_key:
+        raise HTTPException(status_code=401, detail="Missing Client API Key")
+        
+    async with get_async_session() as session:
+        query = select(ClientApiKey).where(
+            ClientApiKey.api_key == client_key,
+            ClientApiKey.is_active.is_(True)
         )
-    return admin_key
+        result = await session.execute(query)
+        key_record = result.scalar_one_or_none()
+        
+        if not key_record:
+            logger.warning(f"Invalid Client API Key attempt: {client_key[:10]}...")
+            raise HTTPException(status_code=401, detail="Invalid Client API Key")
+            
+        # Update last used
+        key_record.last_used_at = datetime.utcnow()
+        await session.commit()
+        
+        return key_record
 
 
-@app.get("/")
-async def root():
-    """Redirect to test frontend"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/static/index.html")
-
-
-@app.get("/admin")
-async def admin_dashboard():
-    """Redirect to admin supervision dashboard"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/static/admin_dashboard.html")
-
-
-@app.get("/kb-management")
-async def kb_management():
-    """Redirect to KB management page"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/static/kb-management.html")
+from routers import frontend
+app.include_router(frontend.router)
 
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check"""
+    """
+    Detailed health check for production monitoring.
+    Returns component status and latencies for debugging.
+    """
+    import time
+    start_time = time.time()
+    
     health_status = {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
+        "version": settings.API_VERSION,
         "components": {
-            "database": "unknown",
-            "vector_store": "unknown"
+            "database": {"status": "unknown", "latency_ms": 0},
+            "vector_store": {"status": "unknown", "latency_ms": 0},
+            "cache": {"status": "unknown", "hit_rate": 0},
+            "embedding_model": {"status": "unknown"}
         }
     }
     
     # Check Database
     try:
+        db_start = time.time()
         async with get_async_session() as session:
             await session.execute(text("SELECT 1"))
-        health_status["components"]["database"] = "healthy"
+        db_latency = (time.time() - db_start) * 1000
+        health_status["components"]["database"] = {
+            "status": "healthy",
+            "latency_ms": round(db_latency, 2)
+        }
     except Exception as e:
-        health_status["components"]["database"] = f"unhealthy: {str(e)}"
+        health_status["components"]["database"] = {
+            "status": f"unhealthy: {str(e)[:50]}",
+            "latency_ms": -1
+        }
         health_status["status"] = "degraded"
         logger.error(f"Health check failed (DB): {str(e)}")
 
-    # Check Vector Store (Pinecone/Chroma)
+    # Check Vector Store (Pinecone)
     try:
-        # Simple check if configured - in real prod, perform a list_indexes or similar
-        if settings.VECTOR_STORE_TYPE:
-             health_status["components"]["vector_store"] = "connected"
+        if settings.PINECONE_API_KEY:
+            from pinecone import Pinecone
+            pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+            vs_start = time.time()
+            index = pc.Index(settings.PINECONE_INDEX)
+            stats = index.describe_index_stats()
+            vs_latency = (time.time() - vs_start) * 1000
+            health_status["components"]["vector_store"] = {
+                "status": "healthy",
+                "latency_ms": round(vs_latency, 2),
+                "vectors": stats.get("total_vector_count", 0)
+            }
+        else:
+            health_status["components"]["vector_store"] = {"status": "not_configured"}
     except Exception as e:
-        health_status["components"]["vector_store"] = f"unhealthy: {str(e)}"
+        health_status["components"]["vector_store"] = {
+            "status": f"unhealthy: {str(e)[:50]}",
+            "latency_ms": -1
+        }
         health_status["status"] = "degraded"
+        
+    # Check Cache
+    try:
+        cache_stats = faq_cache.get_stats()
+        health_status["components"]["cache"] = {
+            "status": "healthy",
+            "size": cache_stats.get("cache_size", 0),
+            "hit_rate": round(cache_stats.get("hit_rate_pct", 0), 1),
+            "semantic_hits": cache_stats.get("semantic_hits", 0)
+        }
+    except Exception as e:
+        health_status["components"]["cache"] = {"status": f"error: {str(e)[:30]}"}
+    
+    # Check Embedding Model (lazy - just check if service exists)
+    try:
+        from utils.embedding_service import get_embedding_service
+        emb_service = get_embedding_service()
+        if emb_service and emb_service.is_available():
+            health_status["components"]["embedding_model"] = {"status": "loaded"}
+        else:
+            health_status["components"]["embedding_model"] = {"status": "not_loaded"}
+    except Exception as e:
+        health_status["components"]["embedding_model"] = {"status": f"error: {str(e)[:30]}"}
+    
+    # Total health check time
+    health_status["check_duration_ms"] = round((time.time() - start_time) * 1000, 2)
         
     if health_status["status"] != "healthy":
          raise HTTPException(status_code=503, detail=health_status)
@@ -329,308 +481,22 @@ async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-@app.get("/chat/{session_id}/history")
-async def get_chat_history(
-    session_id: str,
-    api_key: str = Depends(verify_api_key)
-):
-    """
-    Get conversation history for polling by user frontend.
-    Returns messages and current status (active/takeover).
-    """
-    try:
-        from database.supervision import get_conversation_messages
-        conversation = await get_conversation_messages(session_id)
-        return conversation
-    except Exception as e:
-        logger.error(f"Error fetching history: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch history")
+from routers import chat
+app.include_router(chat.router)
+
+from routers import admin_supervision
+app.include_router(admin_supervision.router)
 
 
-@app.post("/webhook/ai-agent", response_model=MessageResponse)
-@limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")
-async def webhook_handler(
-    request: Request,
-    message_request: MessageRequest,
-    background_tasks: BackgroundTasks,
-    api_key: str = Depends(verify_api_key)
-):
-    """
-    Main webhook endpoint for processing messages
-    
-    Rate limited and API key protected.
-    Returns response immediately, logs in background for speed.
-    """
-    start_time = time.time()
-    
-    try:
-        # Generate session ID if not provided
-        session_id = message_request.sessionId or f"sess_{message_request.channel}_{message_request.userId}_{int(time.time())}"
-        
-        logger.info(f"Processing message from {message_request.userId} via {message_request.channel}")
-        
-        # Process message through LangGraph workflow
-        final_state = await process_message(
-            message=message_request.message,
-            user_id=message_request.userId,
-            session_id=session_id,
-            channel=message_request.channel,
-            user_name=message_request.userName,
-            user_email=message_request.userEmail,
-            user_phone=message_request.userPhone
-        )
-        
-        # Calculate processing time
-        processing_time = (time.time() - start_time)
-        processing_time_ms = int(processing_time * 1000)
-        
-        # Record metrics
-        REQUEST_COUNT.labels(method="POST", endpoint="/webhook/ai-agent", status="success").inc()
-        REQUEST_LATENCY.labels(method="POST", endpoint="/webhook/ai-agent").observe(processing_time)
-        
-        # ⚡ PERFORMANCE: Log conversation in background (non-blocking)
-        from nodes.admin_handler import log_conversation_node
-        async def background_log():
-            try:
-                await log_conversation_node(final_state)
-                logger.debug(f"Background logging completed for {message_request.userId}")
-            except Exception as log_error:
-                logger.error(f"Background logging failed: {str(log_error)}")
-        
-        # Fire and forget - don't wait for logging
-        background_tasks.add_task(background_log)
-        
-        # Normalize AI response formatting for UI readability
-        if final_state.get("ai_response"):
-            final_state["ai_response"] = clean_markup(final_state.get("ai_response"))
+from routers import admin_api
+app.include_router(admin_api.router)
 
-        # Handle spam case
-        if final_state.get("is_spam"):
-            logger.warning(f"Spam detected for user {message_request.userId}")
-            return MessageResponse(
-                status="blocked",
-                message="This message was identified as spam and has been blocked.",
-                sessionId=session_id,
-                language=final_state.get("language"),
-                handoff=False,
-                processingTimeMs=processing_time_ms
-            )
-        
-        # Build response
-        response = MessageResponse(
-            status="success",
-            message=final_state.get("ai_response", ""),
-            sessionId=session_id,
-            language=final_state.get("detected_language"),
-            handoff=final_state.get("requires_human", False),
-            assignedTo=final_state.get("assigned_admin_name"),
-            queueStatus=final_state.get("queue_status"),
-            processingTimeMs=processing_time_ms
-        )
-        
-        logger.info(f"Completed processing for {message_request.userId} in {processing_time_ms}ms")
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error processing message: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="An error occurred processing your message")
+from routers import kb_ingestion
+app.include_router(kb_ingestion.router)
 
+from routers import social_integrations
+app.include_router(social_integrations.router)
 
-@app.get("/conversations/{user_id}")
-async def get_user_conversations(
-    user_id: str, 
-    limit: int = 10,
-    admin_key: str = Depends(verify_admin_key)
-):
-    """Get conversation history for a user (admin only)"""
-    try:
-        history = await db_get_history(user_id, limit=limit)
-        return {"userId": user_id, "conversations": history}
-    except Exception as e:
-        logger.error(f"Error fetching conversations: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch conversations")
-
-
-@app.post("/conversations/{session_id}/resume")
-async def resume_session(session_id: str):
-    """Resume a conversation from last checkpoint"""
-    try:
-        logger.info(f"Resuming conversation: {session_id}")
-        final_state = await resume_conversation(session_id)
-        
-        return {
-            "status": "resumed",
-            "sessionId": session_id,
-            "message": final_state.get("ai_response"),
-            "state": final_state
-        }
-    except Exception as e:
-        logger.error(f"Error resuming conversation: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to resume conversation")
-
-
-@app.get("/conversations/{session_id}/state")
-async def get_session_state(session_id: str):
-    """Get current state of a conversation"""
-    try:
-        state = await get_conversation_state(session_id)
-        if not state:
-            raise HTTPException(status_code=404, detail="Session not found")
-        return {"sessionId": session_id, "state": state}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching state: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch session state")
-
-
-@app.get("/admin/queue")
-async def admin_queue(
-    status: Optional[str] = None,
-    admin_key: str = Depends(verify_admin_key)
-):
-    """Get admin queue entries (admin only)"""
-    try:
-        queue = await get_admin_queue(status=status)
-        return {"queue": queue}
-    except Exception as e:
-        logger.error(f"Error fetching admin queue: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch queue")
-
-
-@app.put("/admin/queue/{queue_id}")
-async def update_queue(
-    queue_id: int, 
-    status: str, 
-    admin_id: Optional[str] = None,
-    admin_key: str = Depends(verify_admin_key)
-):
-    """Update admin queue entry (admin only)"""
-    try:
-        await update_queue_status(queue_id, status, admin_id)
-        return {"status": "updated", "queueId": queue_id}
-    except Exception as e:
-        logger.error(f"Error updating queue: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update queue")
-
-
-# Admin Management Endpoints
-class AdminCreateRequest(BaseModel):
-    """Admin creation request"""
-    adminId: str
-    adminName: str
-    adminEmail: str
-    maxQueueSize: int = 10
-
-
-class AdminStatusRequest(BaseModel):
-    """Admin status update request"""
-    status: str  # 'online' or 'offline'
-
-
-@app.post("/admin/create")
-async def create_admin(
-    request: AdminCreateRequest,
-    admin_key: str = Depends(verify_admin_key)
-):
-    """Create or update admin availability (admin only)"""
-    try:
-        async with get_async_session() as session:
-            # Check if admin exists
-            query = select(AdminAvailability).where(
-                AdminAvailability.admin_id == request.adminId
-            )
-            result = await session.execute(query)
-            admin = result.scalar_one_or_none()
-            
-            if admin:
-                # Update existing admin
-                admin.admin_name = request.adminName
-                admin.admin_email = request.adminEmail
-                admin.max_queue_size = request.maxQueueSize
-                admin.status = 'online'
-                admin.updated_at = datetime.utcnow()
-            else:
-                # Create new admin
-                admin = AdminAvailability(
-                    admin_id=request.adminId,
-                    admin_name=request.adminName,
-                    admin_email=request.adminEmail,
-                    max_queue_size=request.maxQueueSize,
-                    status='online',
-                    current_queue_count=0,
-                    total_queries_handled=0,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-                session.add(admin)
-            
-            await session.commit()
-            
-            logger.info(f"Admin created/updated: {request.adminId}")
-            return {
-                "status": "success",
-                "adminId": request.adminId,
-                "adminName": request.adminName,
-                "message": "Admin is now online"
-            }
-            
-    except Exception as e:
-        logger.error(f"Error creating admin: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create admin")
-
-
-@app.put("/admin/{admin_id}/status")
-async def update_admin_status(
-    admin_id: str, 
-    request: AdminStatusRequest,
-    admin_key: str = Depends(verify_admin_key)
-):
-    """Update admin online/offline status (admin only)"""
-    try:
-        async with get_async_session() as session:
-            stmt = (
-                sql_update(AdminAvailability)
-                .where(AdminAvailability.admin_id == admin_id)
-                .values(status=request.status, updated_at=datetime.utcnow())
-            )
-            await session.execute(stmt)
-            await session.commit()
-            
-            logger.info(f"Admin {admin_id} status updated to {request.status}")
-            return {"status": "success", "adminId": admin_id, "newStatus": request.status}
-            
-    except Exception as e:
-        logger.error(f"Error updating admin status: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update admin status")
-
-
-@app.get("/admin/list")
-async def list_admins(admin_key: str = Depends(verify_admin_key)):
-    """List all admins with their status (admin only)"""
-    try:
-        async with get_async_session() as session:
-            query = select(AdminAvailability)
-            result = await session.execute(query)
-            admins = result.scalars().all()
-            
-            return {
-                "admins": [
-                    {
-                        "adminId": admin.admin_id,
-                        "adminName": admin.admin_name,
-                        "status": admin.status,
-                        "currentQueue": admin.current_queue_count,
-                        "maxQueue": admin.max_queue_size,
-                        "totalHandled": admin.total_queries_handled
-                    }
-                    for admin in admins
-                ]
-            }
-    except Exception as e:
-        logger.error(f"Error listing admins: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to list admins")
 
 
 @app.get("/analytics/faq/cache")
@@ -644,7 +510,7 @@ async def get_faq_cache_stats(admin_key: str = Depends(verify_admin_key)):
             "message": f"Cache hit rate: {stats['hit_rate_pct']:.1f}%, Size: {stats['cache_size']}/{stats['max_size']}"
         }
     except Exception as e:
-        logger.error(f"Error getting FAQ cache stats: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error getting FAQ cache stats: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to get cache stats")
 
 
@@ -662,7 +528,7 @@ async def get_popular_faqs(limit: int = 20, admin_key: str = Depends(verify_admi
             "popular_faqs": popular
         }
     except Exception as e:
-        logger.error(f"Error getting popular FAQs: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error getting popular FAQs: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to get popular FAQs")
 
 
@@ -676,7 +542,7 @@ async def get_faq_analytics_report(admin_key: str = Depends(verify_admin_key)):
             "report": analytics
         }
     except Exception as e:
-        logger.error(f"Error generating FAQ analytics report: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error generating FAQ analytics report: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to generate report")
 
 
@@ -691,8 +557,281 @@ async def clear_faq_cache(admin_key: str = Depends(verify_admin_key)):
             "message": "FAQ cache cleared successfully"
         }
     except Exception as e:
-        logger.error(f"Error clearing FAQ cache: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error clearing FAQ cache: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to clear cache")
+
+
+# ============================================
+# PHASE 5: TENANT ANALYTICS ENDPOINTS
+# ============================================
+from database.analytics import (
+    get_tenant_overview_metrics,
+    get_user_performance_metrics,
+    get_ai_performance_metrics,
+    get_team_performance_metrics,
+    get_kb_performance_metrics,
+    get_channel_performance_metrics,
+    get_usage_governance_metrics,
+    get_quota_governance_metrics,
+    create_alert_rule,
+    get_alert_events,
+    export_tenant_analytics_csv,
+    run_tenant_analytics_aggregation_job as run_phase5_aggregation_job,
+)
+
+
+class AnalyticsAlertRuleRequest(BaseModel):
+    """Request payload for creating tenant analytics alert rules."""
+
+    rule_name: str = Field(..., alias="ruleName", min_length=3, max_length=255)
+    metric_name: str = Field(..., alias="metricName", min_length=2, max_length=100)
+    condition: str = Field(default="gte")
+    threshold_value: float = Field(..., alias="thresholdValue")
+    is_active: bool = Field(default=True, alias="isActive")
+
+    @field_validator("condition")
+    @classmethod
+    def validate_condition(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in {"gt", "gte", "lt", "lte"}:
+            raise ValueError("condition must be one of: gt, gte, lt, lte")
+        return normalized
+
+    class Config:
+        populate_by_name = True
+
+@app.get("/tenant-analytics/overview")
+async def tenant_analytics_overview(
+    days: int = 30,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Get high-level KPIs for the tenant analytics dashboard."""
+    metrics = await get_tenant_overview_metrics(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days
+    )
+    return {
+        "status": "success",
+        "data": metrics
+    }
+
+@app.get("/tenant-analytics/channel-performance")
+async def tenant_analytics_channel_performance(
+    days: int = 30,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Get metrics grouped by channel."""
+    channels = await get_channel_performance_metrics(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days
+    )
+    return {
+        "status": "success",
+        "data": channels
+    }
+
+
+@app.get("/tenant-analytics/user-performance")
+async def tenant_analytics_user_performance(
+    days: int = 30,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Get user-outcome metrics (completion, repeat-contact, drop-off)."""
+    performance = await get_user_performance_metrics(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days,
+    )
+    return {
+        "status": "success",
+        "data": performance,
+    }
+
+@app.get("/tenant-analytics/ai-performance")
+async def tenant_analytics_ai_performance(
+    days: int = 30,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Get AI-specific insights (auto-resolution, KB hits, etc.)."""
+    performance = await get_ai_performance_metrics(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days
+    )
+    return {
+        "status": "success",
+        "data": performance
+    }
+
+
+@app.get("/tenant-analytics/kb-performance")
+async def tenant_analytics_kb_performance(
+    days: int = 30,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Get knowledge-base quality and freshness metrics."""
+    performance = await get_kb_performance_metrics(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days,
+    )
+    return {
+        "status": "success",
+        "data": performance,
+    }
+
+@app.get("/tenant-analytics/team-performance")
+async def tenant_analytics_team_performance(
+    days: int = 30,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Get team performance insights."""
+    performance = await get_team_performance_metrics(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days
+    )
+    return {
+        "status": "success",
+        "data": performance
+    }
+
+
+@app.get("/tenant-analytics/export.csv")
+async def tenant_analytics_export_csv(
+    days: int = 30,
+    domain: str = "all",
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Export tenant analytics metrics in CSV format."""
+    try:
+        csv_data = await export_tenant_analytics_csv(
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+            days=days,
+            domain=domain,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    filename = (
+        f"tenant-analytics-{tenant_context.tenant_id}-"
+        f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
+    )
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""},
+    )
+
+
+@app.post("/tenant-analytics/jobs/aggregate")
+async def tenant_analytics_run_aggregation_job_endpoint(
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Run tenant analytics aggregation and governance alert generation now."""
+    result = await run_phase5_aggregation_job(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+    )
+    return {
+        "status": "success",
+        "data": result,
+    }
+
+
+@app.post("/tenant-analytics/alerts/rules")
+async def tenant_analytics_create_alert_rule(
+    request: AnalyticsAlertRuleRequest,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Create alert rules for tenant analytics governance."""
+    try:
+        rule = await create_alert_rule(
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+            rule_name=request.rule_name,
+            metric_name=request.metric_name,
+            threshold_value=request.threshold_value,
+            condition=request.condition,
+            is_active=request.is_active,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "status": "success",
+        "rule": rule,
+    }
+
+
+@app.get("/tenant-analytics/alerts/events")
+async def tenant_analytics_alert_events(
+    days: int = 30,
+    limit: int = 100,
+    status: Optional[str] = None,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """List alert events generated by analytics governance rules."""
+    events = await get_alert_events(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days,
+        limit=limit,
+        status=status,
+    )
+    return {
+        "status": "success",
+        "data": events,
+    }
+
+
+@app.get("/tenant-analytics/governance/usage")
+async def tenant_analytics_governance_usage(
+    days: int = 30,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Get tenant usage snapshot and quota utilization."""
+    usage = await get_usage_governance_metrics(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days,
+    )
+    return {
+        "status": "success",
+        "data": usage,
+    }
+
+
+@app.get("/tenant-analytics/governance/quota")
+async def tenant_analytics_governance_quota(
+    days: int = 30,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """Get quota forecast and recommendations for tenant governance."""
+    quota = await get_quota_governance_metrics(
+        tenant_id=tenant_context.tenant_id,
+        workspace_id=tenant_context.workspace_id,
+        days=days,
+    )
+    return {
+        "status": "success",
+        "data": quota,
+    }
 
 
 # ============================================
@@ -743,6 +882,7 @@ class ReleaseConversationRequest(BaseModel):
 async def get_supervised_conversations(
     status: Optional[str] = None,
     include_ended: bool = False,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
     admin_key: str = Depends(verify_admin_key)
 ):
     """
@@ -754,7 +894,10 @@ async def get_supervised_conversations(
     try:
         conversations = await get_active_conversations(
             status_filter=status,
-            include_ended=include_ended
+            include_ended=include_ended,
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+            translate_preview=False,
         )
         
         return {
@@ -763,13 +906,14 @@ async def get_supervised_conversations(
             "conversations": conversations
         }
     except Exception as e:
-        logger.error(f"Error getting supervised conversations: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error getting supervised conversations: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to get conversations")
 
 
 @app.get("/admin/supervision/conversations/{session_id}")
 async def get_conversation_detail(
     session_id: str,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
     admin_key: str = Depends(verify_admin_key)
 ):
     """
@@ -778,7 +922,11 @@ async def get_conversation_detail(
     Includes all user messages, AI responses, and admin messages.
     """
     try:
-        conversation = await get_conversation_messages_for_admin(session_id)
+        conversation = await get_conversation_messages_for_admin(
+            session_id,
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+        )
         
         if not conversation.get("messages") and conversation.get("error"):
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -790,7 +938,7 @@ async def get_conversation_detail(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting conversation detail: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error getting conversation detail: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to get conversation")
 
 
@@ -798,6 +946,7 @@ async def get_conversation_detail(
 async def takeover_conversation(
     session_id: str,
     request: AdminTakeoverRequest,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
     admin_key: str = Depends(verify_admin_key)
 ):
     """
@@ -812,19 +961,21 @@ async def takeover_conversation(
         result = await admin_takeover(
             session_id=session_id,
             admin_id=request.admin_id,
-            reason=request.reason
+            reason=request.reason,
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
         )
         
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error"))
         
-        logger.info(f"Admin {request.admin_id} took over conversation {session_id}")
+        logger.opt(exception=True).info("Admin {request.admin_id} took over conversation {session_id}")
         return result
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in takeover: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error in takeover: {}", e)
         raise HTTPException(status_code=500, detail="Failed to take over conversation")
 
 
@@ -832,6 +983,7 @@ async def takeover_conversation(
 async def send_admin_message(
     session_id: str,
     request: AdminMessageRequest,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
     admin_key: str = Depends(verify_admin_key)
 ):
     """
@@ -843,7 +995,9 @@ async def send_admin_message(
         result = await admin_send_message(
             session_id=session_id,
             admin_id=request.admin_id,
-            message=request.message
+            message=request.message,
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
         )
         
         if not result.get("success"):
@@ -854,7 +1008,7 @@ async def send_admin_message(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error sending admin message: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error sending admin message: {}", e)
         raise HTTPException(status_code=500, detail="Failed to send message")
 
 
@@ -862,6 +1016,7 @@ async def send_admin_message(
 async def preview_admin_message(
     session_id: str,
     request: AdminPreviewRequest,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
     admin_key: str = Depends(verify_admin_key)
 ):
     """Preview/grammar-check an admin message using the comprehension agent.
@@ -873,7 +1028,11 @@ async def preview_admin_message(
         # Lazy import to avoid startup dependency if LLM not configured
         from nodes.comprehension_agent import check_message
 
-        result = await check_message(request.message)
+        result = await check_message(
+            request.message,
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+        )
 
         return {
             "status": "success",
@@ -883,10 +1042,10 @@ async def preview_admin_message(
         }
 
     except RuntimeError as re:
-        logger.error(f"Comprehension preview failed: {str(re)}")
+        logger.error("Comprehension preview failed: {}", re)
         raise HTTPException(status_code=503, detail=str(re))
     except Exception as e:
-        logger.error(f"Error in preview_admin_message: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error in preview_admin_message: {}", e)
         raise HTTPException(status_code=500, detail="Failed to run preview")
 
 
@@ -894,6 +1053,7 @@ async def preview_admin_message(
 async def enhance_admin_message(
     session_id: str,
     request: AdminEnhanceRequest,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
     admin_key: str = Depends(verify_admin_key)
 ):
     """Apply an AI enhancement action to an admin's draft message.
@@ -906,12 +1066,18 @@ async def enhance_admin_message(
 
     try:
         from nodes.comprehension_agent import enhance_message
-        result = await enhance_message(request.message, request.action)
+        result = await enhance_message(
+            request.message,
+            request.action,
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+        )
         return {"status": "success", **result}
     except RuntimeError as re:
+        logger.error("Enhance message failed: {}", re)
         raise HTTPException(status_code=503, detail=str(re))
     except Exception as e:
-        logger.error(f"Error in enhance_admin_message: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error in enhance_admin_message: {}", e)
         raise HTTPException(status_code=500, detail="Failed to enhance message")
 
 
@@ -919,6 +1085,7 @@ async def enhance_admin_message(
 async def release_admin_conversation(
     session_id: str,
     request: ReleaseConversationRequest,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
     admin_key: str = Depends(verify_admin_key)
 ):
     """
@@ -931,7 +1098,9 @@ async def release_admin_conversation(
         result = await release_conversation(
             session_id=session_id,
             admin_id=request.admin_id,
-            end_conversation=request.end_conversation
+            end_conversation=request.end_conversation,
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
         )
         
         if not result.get("success"):
@@ -943,7 +1112,7 @@ async def release_admin_conversation(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error releasing conversation: {str(e)}", exc_info=True)
+        logger.error("Error releasing conversation: {}", e)
         raise HTTPException(status_code=500, detail="Failed to release conversation")
 
 
@@ -982,7 +1151,7 @@ async def verify_super_admin_role(
         }
         
     except Exception as e:
-        logger.error(f"Error verifying super admin: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error verifying super admin: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to verify super admin")
 
 
@@ -1008,7 +1177,7 @@ async def get_super_admin_stats(
         }
         
     except Exception as e:
-        logger.error(f"Error getting super admin stats: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error getting super admin stats: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to get admin stats")
 
 
@@ -1033,7 +1202,7 @@ async def monitor_all_conversations(
         }
         
     except Exception as e:
-        logger.error(f"Error monitoring conversations: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error monitoring conversations: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to monitor conversations")
 
 
@@ -1054,7 +1223,7 @@ async def get_query_distribution_stats(
         return distribution
         
     except Exception as e:
-        logger.error(f"Error getting query distribution: {str(e)}", exc_info=True)
+        logger.opt(exception=True).error("Error getting query distribution: {}", str(e))
         raise HTTPException(status_code=500, detail="Failed to get query distribution")
 
 
@@ -1086,13 +1255,13 @@ async def super_admin_takeover_conversation(
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("message"))
         
-        logger.info(f"Super admin {request.super_admin_id} took over conversation {session_id}")
+        logger.opt(exception=True).info("Super admin {request.super_admin_id} took over conversation {session_id}")
         return result
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in super admin takeover: {str(e)}", exc_info=True)
+        logger.error("Error in super admin takeover: {}", e)
         raise HTTPException(status_code=500, detail="Failed to takeover conversation")
 
 
@@ -1125,13 +1294,13 @@ async def super_admin_release_conversation(
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("message"))
         
-        logger.info(f"Super admin {request.super_admin_id} released conversation {session_id}")
+        logger.opt(exception=True).info("Super admin {request.super_admin_id} released conversation {session_id}")
         return result
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in super admin release: {str(e)}", exc_info=True)
+        logger.error("Error in super admin release: {}", e)
         raise HTTPException(status_code=500, detail="Failed to release conversation")
 
 
@@ -1171,13 +1340,13 @@ async def super_admin_reassign_conversation(
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("message"))
 
-        logger.info(f"Super admin {request.super_admin_id} reassigned {session_id} to {request.target_admin_id}")
+        logger.opt(exception=True).info("Super admin {request.super_admin_id} reassigned {session_id} to {request.target_admin_id}")
         return result
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in super admin reassign: {str(e)}", exc_info=True)
+        logger.error("Error in super admin reassign: {}", e)
         raise HTTPException(status_code=500, detail="Failed to reassign conversation")
 
 
@@ -1266,7 +1435,7 @@ async def log_unanswered_question_endpoint(
             
             question_id = question.id
         
-        logger.info(f"Logged unanswered question {question_id} for session {request.session_id}")
+        logger.opt(exception=True).info("Logged unanswered question {question_id} for session {request.session_id}")
         return {
             "success": True,
             "question_id": question_id,
@@ -1274,7 +1443,7 @@ async def log_unanswered_question_endpoint(
         }
         
     except Exception as e:
-        logger.error(f"Error logging unanswered question: {str(e)}", exc_info=True)
+        logger.error("Error logging unanswered question: {}", e)
         raise HTTPException(status_code=500, detail=f"Failed to log question: {str(e)}")
 
 
@@ -1311,7 +1480,7 @@ async def link_admin_response_endpoint(
             
             await session.commit()
         
-        logger.info(f"Linked response to question {question_id}")
+        logger.opt(exception=True).info("Linked response to question {question_id}")
         return {
             "success": True,
             "response_id": question_id,
@@ -1321,7 +1490,7 @@ async def link_admin_response_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error linking response: {str(e)}", exc_info=True)
+        logger.error("Error linking response: {}", e)
         raise HTTPException(status_code=500, detail=f"Failed to link response: {str(e)}")
 
 
@@ -1347,7 +1516,7 @@ async def approve_for_kb_endpoint(
         if not success:
             raise HTTPException(status_code=400, detail="Failed to approve question")
         
-        logger.info(f"Approved question {question_id} for KB")
+        logger.opt(exception=True).info("Approved question {question_id} for KB")
         return {
             "success": True,
             "approval_id": question_id,
@@ -1357,7 +1526,7 @@ async def approve_for_kb_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error approving for KB: {str(e)}", exc_info=True)
+        logger.error("Error approving for KB: {}", e)
         raise HTTPException(status_code=500, detail=f"Failed to approve: {str(e)}")
 
 
@@ -1445,9 +1614,9 @@ async def add_to_kb(
             try:
                 # Clear from Redis as well
                 await redis_cache.delete(qa_data["question"], qa_data.get("language", "English"))
-                logger.info(f"Invalidated Redis cache for question: {qa_data['question'][:50]}...")
+                logger.opt(exception=True).info("Invalidated Redis cache for question: {qa_data['question'][:50]}...")
             except Exception as e:
-                logger.warning(f"Failed to invalidate Redis cache: {e}")
+                logger.warning("Failed to invalidate Redis cache: {}", e)
         
         logger.info(f"Added question {question_id} to KB with FAQ ID {faq_id} and invalidated cache")
         return {
@@ -1462,7 +1631,7 @@ async def add_to_kb(
     except Exception as e:
         # Use repr() to avoid formatting issues with curly braces in error messages
         error_msg = repr(e)
-        logger.error(f"Error adding to KB: {error_msg}", exc_info=True)
+        logger.error(f"Error adding to KB: {error_msg}", e)
         raise HTTPException(status_code=500, detail=f"Failed to add to KB: {str(e)}")
 
 
@@ -1517,7 +1686,7 @@ async def remove_from_kb(
             
             await session.commit()
         
-        logger.info(f"Removed question {question_id} (FAQ ID: {faq_id}) from KB by {request.admin_id}")
+        logger.opt(exception=True).info("Removed question {question_id} (FAQ ID: {faq_id}) from KB by {request.admin_id}")
         return {
             "success": True,
             "message": "Successfully removed from KB",
@@ -1528,7 +1697,7 @@ async def remove_from_kb(
         raise
     except Exception as e:
         error_msg = repr(e)
-        logger.error(f"Error removing from KB: {error_msg}", exc_info=True)
+        logger.error("Error removing from KB: {}", error_msg)
         raise HTTPException(status_code=500, detail=f"Failed to remove from KB: {str(e)}")
 
 
@@ -1650,7 +1819,7 @@ async def update_kb(
                     if request.question:
                         await redis_cache.delete(request.question, question.user_language or "English")
                 except Exception as e:
-                    logger.warning(f"Failed to invalidate Redis cache: {e}")
+                    logger.opt(exception=True).warning("Failed to invalidate Redis cache: {}")
         
         logger.info(f"Updated KB entry {question_id} (FAQ ID: {faq_id}) - fields: {', '.join(updated_fields)}")
         return {
@@ -1664,7 +1833,7 @@ async def update_kb(
         raise
     except Exception as e:
         error_msg = repr(e)
-        logger.error(f"Error updating KB: {error_msg}", exc_info=True)
+        logger.error(f"Error updating KB: {error_msg}", e)
         raise HTTPException(status_code=500, detail=f"Failed to update KB: {str(e)}")
 
 
@@ -1775,7 +1944,7 @@ async def manual_add_to_kb(
             try:
                 await redis_cache.delete(request.question, request.language or "English")
             except Exception as e:
-                logger.warning(f"Failed to invalidate Redis cache: {e}")
+                logger.opt(exception=True).warning("Failed to invalidate Redis cache: {}")
         
         logger.info(f"Manually added KB entry {question_id} (FAQ ID: {faq_id}) by {request.admin_id}")
         return {
@@ -1789,7 +1958,7 @@ async def manual_add_to_kb(
         raise
     except Exception as e:
         error_msg = repr(e)
-        logger.error(f"Error manually adding to KB: {error_msg}", exc_info=True)
+        logger.error(f"Error manually adding to KB: {error_msg}", e)
         raise HTTPException(status_code=500, detail=f"Failed to add to KB: {str(e)}")
 
 
@@ -1913,7 +2082,7 @@ async def csv_import_to_kb(
             except Exception as row_err:
                 results["failed"] += 1
                 results["errors"].append(f"Row {results['total']} ('{question[:40]}'): {str(row_err)}")
-                logger.warning(f"CSV import row {results['total']} failed: {row_err}")
+                logger.opt(exception=True).warning("CSV import row {results['total']} failed: {row_err}")
 
         logger.info(f"CSV import by {admin_id}: {results['success']}/{results['total']} succeeded")
         return {
@@ -1925,7 +2094,7 @@ async def csv_import_to_kb(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"CSV import error: {repr(e)}", exc_info=True)
+        logger.error("CSV import error: {}", repr(e))
         raise HTTPException(status_code=500, detail=f"CSV import failed: {str(e)}")
 
 
@@ -1945,6 +2114,17 @@ async def get_kb_items(
         from database.models import get_async_session
         
         async with get_async_session() as session:
+            has_kb_table = await (await session.connection()).run_sync(
+                lambda sync_conn: inspect(sync_conn).has_table("kb_unanswered_questions")
+            )
+            if not has_kb_table:
+                logger.warning("kb_unanswered_questions table is missing; returning empty KB items list")
+                return {
+                    "success": True,
+                    "items": [],
+                    "count": 0,
+                }
+
             query = select(KBUnansweredQuestion)
             
             # Filter by added_to_kb boolean (covers manual-add AND csv-import)
@@ -1983,14 +2163,244 @@ async def get_kb_items(
         
     except Exception as e:
         error_msg = repr(e)
-        logger.error(f"Error fetching KB items: {error_msg}", exc_info=True)
+        if "kb_unanswered_questions" in error_msg and (
+            "UndefinedTable" in error_msg or "does not exist" in error_msg or "relation" in error_msg
+        ):
+            logger.warning(
+                "kb_unanswered_questions table not available during KB items fetch; returning empty list"
+            )
+            return {
+                "success": True,
+                "items": [],
+                "count": 0,
+            }
+
+        logger.opt(exception=True).error("Error fetching KB items: {}", error_msg)
         raise HTTPException(status_code=500, detail=f"Failed to fetch KB items: {str(e)}")
 
+
+# ============================================================================
+# PHASE 2: ADAPTIVE DATA INGESTION (FILE UPLOAD & CHUNKING)
+# ============================================================================
+
+from utils.adaptive_chunking import AdaptiveChunker
+
+@app.post("/admin/workspaces/{workspace_id}/files/upload")
+async def upload_document_for_ingestion(
+    workspace_id: str,
+    file: UploadFile = File(...),
+    mode: str = Form("hybrid"),  # "vector", "page", or "hybrid"
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key)
+):
+    """
+    Accepts a PDF, DOCX, or TXT file and dynamically chunks it based on the 
+    specified adaptive mode before indexing it into the Vector Store.
+    """
+    if workspace_id != tenant_context.workspace_id:
+        raise HTTPException(status_code=403, detail="Workspace mismatch")
+        
+    try:
+        file_bytes = await file.read()
+        filename = file.filename
+        
+        # 1. Execute Adaptive Chunking
+        chunker = AdaptiveChunker(chunk_size=1000, chunk_overlap=200)
+        chunks = chunker.process_file(
+            file_bytes=file_bytes,
+            filename=filename,
+            mode=mode,
+            metadata={"admin_id": "api_upload"}
+        )
+        
+        # 2. Get Vector Store and Embeddings Service
+        from tools.knowledge_base import get_cached_embeddings, get_cached_vector_store, build_kb_namespace
+        embeddings = get_cached_embeddings()
+        vector_store = get_cached_vector_store()
+        
+        if not embeddings or not vector_store:
+            raise HTTPException(status_code=500, detail="Vector store / Embeddings not initialized")
+            
+        namespace = build_kb_namespace(tenant_context.tenant_id, tenant_context.workspace_id)
+        index = vector_store.index
+        
+        # 3. Generate Vectors and Upsert
+        # We process chunks in batches to avoid payload size issues
+        batch_size = 100
+        total_upserted = 0
+        
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i+batch_size]
+            vectors_to_upsert = []
+            
+            for chunk in batch:
+                content = chunk["content"]
+                if not content.strip():
+                    continue
+                    
+                meta = chunk["metadata"]
+                # Pinecone doesn't like complex/nested metadatas sometimes, ensure basic types
+                clean_meta = {
+                    "text": content,  # We store text directly in metadata for retrieval
+                    "source": meta.get("source", filename),
+                    "chunk_mode": meta.get("mode", mode),
+                    "page": str(meta.get("page", 1)),
+                    "ingested_at": datetime.utcnow().isoformat()
+                }
+                
+                # Generate unique determinisitic ID or random uuid
+                import uuid
+                doc_id = f"doc_{uuid.uuid4().hex[:12]}"
+                clean_meta["document_id"] = doc_id
+                
+                emb = embeddings.embed_query(content)
+                vectors_to_upsert.append({
+                    "id": doc_id,
+                    "values": emb,
+                    "metadata": clean_meta
+                })
+                
+            if vectors_to_upsert:
+                index.upsert(vectors=vectors_to_upsert, namespace=namespace)
+                total_upserted += len(vectors_to_upsert)
+                
+        return {
+            "status": "success",
+            "message": f"Successfully processed {filename}",
+            "chunks_created": len(chunks),
+            "vectors_upserted": total_upserted,
+            "mode_used": mode,
+            "namespace": namespace
+        }
+        
+    except Exception as e:
+        logger.opt(exception=True).error("Error uploading file for ingestion: {}", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+
+
+# ============================================================================
+# PHASE 3: RETRIEVAL MODES + INGESTION SOURCES/JOBS
+# ============================================================================
+
+class RetrievalProfileUpsertRequest(BaseModel):
+    """Request payload for retrieval profile upsert."""
+
+    defaultMode: str = "rag"
+    allowedModes: list[str] = Field(default_factory=lambda: ["rag"])
+    pageWindowLimit: int = 4
+    complianceCriticality: float = 0.5
+    averageDocumentPages: int = 10
+    queryComplexity: float = 0.5
+    latencyBudgetMs: int = 2500
+    costSensitivity: float = 0.5
+
+
+class RetrievalRecommendationRequest(BaseModel):
+    """Request payload for retrieval recommendation preview/selection."""
+
+    query: str = Field(..., min_length=1, max_length=5000)
+    selectedModeOverride: Optional[str] = None
+
+
+class KnowledgeSourceCreateRequest(BaseModel):
+    """Request payload for creating knowledge source connectors."""
+
+    sourceName: str = Field(..., min_length=1, max_length=255)
+    sourceType: str = Field(..., min_length=1, max_length=50)
+    sourceUri: Optional[str] = None
+    sourceConfig: Optional[dict[str, Any]] = None
+    createdBy: Optional[str] = None
+
+
+class IngestionJobCreateRequest(BaseModel):
+    """Request payload to enqueue an ingestion job."""
+
+    sourceId: int
+    createdBy: Optional[str] = None
+    triggerType: str = "manual"
+    runNow: bool = True
+
+
+@app.get("/admin/retrieval/profile")
+async def get_retrieval_profile_endpoint(
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key),
+):
+    """Get workspace retrieval profile (Phase 3)."""
+    try:
+        profile = await get_retrieval_profile(
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+        )
+        return {
+            "status": "success",
+            "profile": profile,
+        }
+    except Exception as e:
+        logger.opt(exception=True).error("Error getting retrieval profile: {}", str(e))
+        raise HTTPException(status_code=500, detail="Failed to get retrieval profile")
+
+
+@app.post("/admin/retrieval/profile")
+async def upsert_retrieval_profile_endpoint(
+    request: RetrievalProfileUpsertRequest,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key),
+):
+    """Create or update retrieval profile for workspace (Phase 3)."""
+    try:
+        profile = await upsert_retrieval_profile(
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+            default_mode=request.defaultMode,
+            allowed_modes=request.allowedModes,
+            page_window_limit=request.pageWindowLimit,
+            compliance_criticality=request.complianceCriticality,
+            average_document_pages=request.averageDocumentPages,
+            query_complexity=request.queryComplexity,
+            latency_budget_ms=request.latencyBudgetMs,
+            cost_sensitivity=request.costSensitivity,
+        )
+        return {
+            "status": "success",
+            "profile": profile,
+        }
+    except Exception as e:
+        logger.opt(exception=True).error("Error upserting retrieval profile: {}", str(e))
+        raise HTTPException(status_code=500, detail="Failed to upsert retrieval profile")
+
+
+@app.post("/admin/retrieval/recommend")
+async def retrieval_recommendation_endpoint(
+    request: RetrievalRecommendationRequest,
+    tenant_context: TenantContext = Depends(resolve_tenant_context),
+    admin_key: str = Depends(verify_admin_key),
+):
+    """Get retrieval recommendation and selected mode for a query (Phase 3)."""
+    try:
+        selection = await select_retrieval_mode(
+            tenant_id=tenant_context.tenant_id,
+            workspace_id=tenant_context.workspace_id,
+            query_text=request.query,
+            selected_mode_override=request.selectedModeOverride,
+        )
+        return {
+            "status": "success",
+            "selection": selection,
+        }
+    except Exception as e:
+        logger.opt(exception=True).error("Error selecting retrieval mode: {}", str(e))
+        raise HTTPException(status_code=500, detail="Failed to select retrieval mode")
+
+
+
+from routers import admin_actions
+app.include_router(admin_actions.router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler - logs full traceback but returns safe message"""
-    logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
+    logger.opt(exception=exc).error("Unhandled exception: {}", exc)
     return JSONResponse(
         status_code=500,
         content={"status": "error", "message": "Internal server error"}
@@ -2002,7 +2412,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
-        port=5678,
+        port=8000,
         reload=settings.DEBUG,
         workers=1  # Use 1 worker to avoid multiple embedding loads
     )

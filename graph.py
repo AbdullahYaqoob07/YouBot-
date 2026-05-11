@@ -4,7 +4,6 @@ Defines the complete AI agent graph with all nodes and edges
 """
 from typing import Literal, Optional
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
 import asyncio
@@ -118,24 +117,12 @@ def create_workflow() -> StateGraph:
 
 async def compile_graph(workflow: StateGraph) -> any:
     """
-    Compile the workflow with async checkpointing
-    
-    Args:
-        workflow: StateGraph instance
-        
-    Returns:
-        Compiled graph with async checkpointing enabled
+    Compile the workflow with distributed async checkpointing
     """
-    from pathlib import Path
-    import aiosqlite
+    from database.checkpointer import AsyncMySQLSaver
     
-    # Ensure checkpoints directory exists
-    checkpoint_path = Path(".checkpoints")
-    checkpoint_path.mkdir(exist_ok=True)
-    
-    # Create async SQLite connection and checkpointer
-    conn = await aiosqlite.connect(str(checkpoint_path / "checkpoints.db"))
-    checkpointer = AsyncSqliteSaver(conn)
+    # Create persistent distributed checkpoint saver
+    checkpointer = AsyncMySQLSaver()
     
     # Compile with checkpointing
     graph = workflow.compile(checkpointer=checkpointer)
@@ -146,6 +133,65 @@ async def compile_graph(workflow: StateGraph) -> any:
 # Create and compile the main graph
 workflow = create_workflow()
 agent_graph = None  # Will be initialized on first use
+
+
+def _build_thread_id(session_id: str, tenant_id: str, workspace_id: str) -> str:
+    """Build a tenant-scoped thread id for LangGraph checkpoint isolation."""
+    return f"{tenant_id}:{workspace_id}:{session_id}"
+
+
+def _normalize_state(state: dict) -> dict:
+    """
+    Ensure all required AgentState fields are present.
+    Fills in missing fields with defaults to prevent KeyError on checkpoint resume.
+    This is critical for backward compatibility with old checkpoints.
+    """
+    from datetime import datetime
+    
+    state_defaults = {
+        "language": None,
+        "is_roman_script": True,
+        "detected_language": None,
+        "fast_path": False,
+        "query_type": None,
+        "is_spam": False,
+        "spam_score": 0.0,
+        "spam_reasons": [],
+        "conversation_history": [],
+        "history_count": 0,
+        "knowledge_base_results": [],
+        "knowledge_base_used": False,
+        "cache_hit": False,
+        "retrieval_mode_selected": None,
+        "retrieval_mode_recommended": None,
+        "retrieval_mode_reason": None,
+        "retrieval_mode_override": None,
+        "ai_response": "",
+        "system_prompt": "",
+        "user_wants_human": False,
+        "is_genuine_relocation_question": False,
+        "ai_lacks_knowledge": False,
+        "classification_confidence": 0.0,
+        "requires_human": False,
+        "handoff_reason": None,
+        "assigned_admin_id": None,
+        "assigned_admin_name": None,
+        "queue_status": None,
+        "sentiment": "neutral",
+        "response_time_ms": None,
+        "error": "",
+        "retry_count": 0,
+        "next_node": None,
+        "should_end": False,
+    }
+    
+    # Fill in missing fields from defaults
+    for key, default_value in state_defaults.items():
+        if key not in state:
+            state[key] = default_value
+    
+    return state
+
 
 async def get_agent_graph():
     """Get or create the compiled agent graph"""
@@ -159,10 +205,13 @@ async def process_message(
     message: str,
     user_id: str,
     session_id: str,
+    tenant_id: str,
+    workspace_id: str,
     channel: str = "webhook",
     user_name: str = None,
     user_email: str = None,
-    user_phone: str = None
+    user_phone: str = None,
+    retrieval_mode_override: Optional[str] = None,
 ) -> AgentState:
     """
     Process a user message through the workflow
@@ -171,6 +220,8 @@ async def process_message(
         message: User message
         user_id: Unique user identifier
         session_id: Unique session identifier
+        tenant_id: Tenant identifier
+        workspace_id: Workspace identifier
         channel: Communication channel
         user_name: Optional user name
         user_email: Optional user email
@@ -182,16 +233,18 @@ async def process_message(
     from datetime import datetime
     import uuid
     
-    # Create initial state
+    # Create initial state with all required fields to prevent KeyError on resume
     initial_state: AgentState = {
         "message": message,
         "user_id": user_id,
         "session_id": session_id,
         "channel": channel,
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
         "user_name": user_name,
         "user_email": user_email,
         "user_phone": user_phone,
-        
+
         # Defaults
         "language": None,
         "is_roman_script": True,
@@ -206,6 +259,10 @@ async def process_message(
         "knowledge_base_results": [],
         "knowledge_base_used": False,
         "cache_hit": False,
+        "retrieval_mode_selected": None,
+        "retrieval_mode_recommended": None,
+        "retrieval_mode_reason": None,
+        "retrieval_mode_override": retrieval_mode_override,
         "ai_response": "",
         "system_prompt": "",
         "user_wants_human": False,
@@ -219,8 +276,8 @@ async def process_message(
         "queue_status": None,
         "sentiment": "neutral",
         "response_time_ms": None,
-        "model_used": settings.GROQ_MODEL,
-        "error": None,
+        "model_used": f"{settings.DEFAULT_LLM_PROVIDER}:{settings.DEFAULT_LLM_MODEL or settings.GROQ_MODEL}",
+        "error": "",
         "retry_count": 0,
         "request_id": str(uuid.uuid4()),
         "created_at": datetime.utcnow(),
@@ -229,34 +286,40 @@ async def process_message(
         "should_end": False
     }
     
-    # Create config with thread_id for checkpointing
+    # Create tenant-scoped thread_id for checkpointing isolation
     config = RunnableConfig(
-        configurable={"thread_id": session_id},
+        configurable={"thread_id": _build_thread_id(session_id, tenant_id, workspace_id)},
         recursion_limit=50
     )
     
     # Process through workflow
     try:
         graph = await get_agent_graph()
-        final_state = await graph.ainvoke(initial_state, config)
+        # Normalize state to ensure all fields present (critical for checkpoint resume)
+        normalized_state = _normalize_state(initial_state)
+        
+        # ainvoke returns only channels that nodes wrote to during this run.
+        # Merging with normalized_state ensures every key is always present,
+        # eliminating KeyError for channels never touched (e.g. 'error' on cache-hit fast path).
+        graph_output = await graph.ainvoke(normalized_state, config)
+        final_state = {**normalized_state, **graph_output}
         return final_state
-    except KeyError as ke:
-        # Handle missing state keys gracefully
-        logger.error(f"Missing state key for {user_id}: {str(ke)}", exc_info=True)
-        initial_state["error"] = f"State error: {str(ke)}"
-        initial_state["ai_response"] = "I apologize, but I encountered an error. Let me connect you with our team."
-        initial_state["requires_human"] = True
-        return initial_state
+
     except Exception as e:
-        # Log error with traceback and return state with error
-        logger.error(f"Error in process_message for {user_id}: {str(e)}", exc_info=True)
-        initial_state["error"] = str(e)
+        import traceback
+        traceback.print_exc()
+        logger.error(f"Error in process_message for {user_id}: {type(e).__name__}: {str(e)}")
+        initial_state["error"] = f"{type(e).__name__}: {str(e)}"
         initial_state["ai_response"] = "I apologize, but I encountered an error. Let me connect you with our team."
         initial_state["requires_human"] = True
         return initial_state
 
 
-async def resume_conversation(session_id: str) -> AgentState:
+async def resume_conversation(
+    session_id: str,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> AgentState:
     """
     Resume a conversation from last checkpoint
     
@@ -266,7 +329,11 @@ async def resume_conversation(session_id: str) -> AgentState:
     Returns:
         Final state after resuming
     """
-    config = RunnableConfig(configurable={"thread_id": session_id})
+    resolved_tenant = tenant_id or settings.DEFAULT_TENANT_ID
+    resolved_workspace = workspace_id or settings.DEFAULT_WORKSPACE_ID
+    config = RunnableConfig(
+        configurable={"thread_id": _build_thread_id(session_id, resolved_tenant, resolved_workspace)}
+    )
     
     # Resume from checkpoint
     graph = await get_agent_graph()
@@ -274,7 +341,11 @@ async def resume_conversation(session_id: str) -> AgentState:
     return final_state
 
 
-async def get_conversation_state(session_id: str) -> Optional[AgentState]:
+async def get_conversation_state(
+    session_id: str,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> Optional[AgentState]:
     """
     Get current state of a conversation
     
@@ -284,7 +355,11 @@ async def get_conversation_state(session_id: str) -> Optional[AgentState]:
     Returns:
         Current state or None if not found
     """
-    config = RunnableConfig(configurable={"thread_id": session_id})
+    resolved_tenant = tenant_id or settings.DEFAULT_TENANT_ID
+    resolved_workspace = workspace_id or settings.DEFAULT_WORKSPACE_ID
+    config = RunnableConfig(
+        configurable={"thread_id": _build_thread_id(session_id, resolved_tenant, resolved_workspace)}
+    )
     
     try:
         graph = await get_agent_graph()

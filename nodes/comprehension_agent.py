@@ -1,47 +1,60 @@
 """
 Comprehension Agent
-Provides grammar/clarity suggestions and an optional corrected message using the configured LLM (Groq).
+Provides grammar/clarity suggestions and optional rewrites using the configured workspace LLM.
 This is invoked only when an admin requests a preview before sending a message.
 """
-import asyncio
+from typing import Optional
+
+from database.llm_provider_config_runtime import get_workspace_llm_runtime_config
+from llm.factory import create_chat_model
+from langchain_core.messages import HumanMessage
 from config import settings
 from loguru import logger
 
 
-async def _call_llm_sync(prompt: str) -> str:
-    """Call the ChatGroq client in a threadpool (the client is blocking)."""
-    try:
-        from langchain_groq import ChatGroq
-    except Exception as e:
-        logger.error(f"Missing ChatGroq library: {e}")
-        raise
-
-    def _invoke():
-        llm = ChatGroq(
-            model=settings.GROQ_MODEL,
-            api_key=settings.GROQ_API_KEY,
-            temperature=0.0
-        )
-        # invoke returns an object with .content in parts of this repo
-        resp = llm.invoke(prompt)
-        # Some clients return a simple string
-        if hasattr(resp, 'content'):
-            return resp.content
-        return str(resp)
-
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _invoke)
-    return result
+def _resolve_scope(
+    tenant_id: Optional[str],
+    workspace_id: Optional[str],
+) -> tuple[str, str]:
+    resolved_tenant = tenant_id or settings.DEFAULT_TENANT_ID
+    resolved_workspace = workspace_id or settings.DEFAULT_WORKSPACE_ID
+    return resolved_tenant, resolved_workspace
 
 
-async def check_message(message: str, language: str = "English") -> dict:
+async def _call_llm(
+    prompt: str,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+    temperature: float = 0.0,
+    max_tokens: int = 500,
+) -> str:
+    """Call the tenant/workspace configured chat model and return text content."""
+    resolved_tenant, resolved_workspace = _resolve_scope(tenant_id, workspace_id)
+    runtime_llm = await get_workspace_llm_runtime_config(resolved_tenant, resolved_workspace)
+    llm = create_chat_model(
+        runtime=runtime_llm,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout_seconds=settings.GROQ_REQUEST_TIMEOUT,
+    )
+
+    resp = await llm.ainvoke([HumanMessage(content=prompt)])
+    if hasattr(resp, "content"):
+        content = resp.content
+        return content if isinstance(content, str) else str(content)
+    return str(resp)
+
+
+async def check_message(
+    message: str,
+    language: str = "English",
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> dict:
     """Return a dict with `corrected` and `suggestions` keys.
 
-    Uses the configured GROQ LLM. Raises an exception if LLM is not configured.
+    Uses the configured workspace LLM runtime.
     """
-    if not settings.GROQ_API_KEY or not settings.GROQ_MODEL:
-        raise RuntimeError("LLM not configured (GROQ_API_KEY / GROQ_MODEL missing)")
-
     prompt = f"""
 You are an expert customer-support editor. Improve the following admin message for grammar, clarity, tone (professional, concise), and politeness.
 
@@ -58,7 +71,13 @@ If no changes are needed, set `corrected` to the original message and `suggestio
 Do not include any extra explanation outside the JSON.
 """
 
-    raw = await _call_llm_sync(prompt)
+    raw = await _call_llm(
+        prompt,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        temperature=0.0,
+        max_tokens=450,
+    )
 
     # Try to extract JSON from response; fallback to simple parsing
     import json
@@ -116,15 +135,17 @@ ACTION_PROMPTS = {
     "grammar": "Fix any grammar, spelling, and punctuation errors in the following message. Return only the corrected message.",
 }
 
-
-async def enhance_message(message: str, action: str) -> dict:
+async def enhance_message(
+    message: str,
+    action: str,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> dict:
     """Apply an AI enhancement action to a message.
 
     Supported actions: shorten, extend, summarize, rephrase, formal, friendly, bullets, grammar.
     Returns a dict with `enhanced` (the transformed text) key.
     """
-    if not settings.GROQ_API_KEY or not settings.GROQ_MODEL:
-        raise RuntimeError("LLM not configured (GROQ_API_KEY / GROQ_MODEL missing)")
 
     instruction = ACTION_PROMPTS.get(action)
     if not instruction:
@@ -137,7 +158,13 @@ Message:
 
 Respond with only the transformed text, no extra explanation."""
 
-    raw = await _call_llm_sync(prompt)
+    raw = await _call_llm(
+        prompt,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        temperature=0.0,
+        max_tokens=400,
+    )
 
     import re
     enhanced = raw.strip()
@@ -147,29 +174,52 @@ Respond with only the transformed text, no extra explanation."""
     return {"enhanced": enhanced, "action": action, "original": message}
 
 
-async def translate_to_english(text: str, source_language: str) -> str:
+async def translate_to_english(
+    text: str,
+    source_language: str,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> str:
     """Translate text from any language to English.
 
     Returns the original text unchanged if source is already English or text is empty.
+    Supports "auto" for auto-detection.
     """
     if not text or not text.strip():
         return text
     if source_language.lower() in ("english", "en"):
         return text
-    if not settings.GROQ_API_KEY or not settings.GROQ_MODEL:
-        raise RuntimeError("LLM not configured (GROQ_API_KEY / GROQ_MODEL missing)")
 
-    prompt = f"""Translate the following {source_language} text to English.
+    if source_language.lower() == "auto":
+        prompt = f"""If the following text is NOT in English, translate it to English.
+If it's already in English, return it unchanged.
+Return ONLY the English text with no explanation.
+
+Text:
+{text}"""
+    else:
+        prompt = f"""Translate the following {source_language} text to English.
 Return ONLY the translated text with no extra explanation or formatting.
 
 Text:
 {text}"""
 
-    raw = await _call_llm_sync(prompt)
+    raw = await _call_llm(
+        prompt,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        temperature=0.0,
+        max_tokens=450,
+    )
     return raw.strip()
 
 
-async def translate_from_english(text: str, target_language: str) -> str:
+async def translate_from_english(
+    text: str,
+    target_language: str,
+    tenant_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> str:
     """Translate English text to the target language.
 
     Returns the original text unchanged if target is English or text is empty.
@@ -178,8 +228,6 @@ async def translate_from_english(text: str, target_language: str) -> str:
         return text
     if target_language.lower() in ("english", "en"):
         return text
-    if not settings.GROQ_API_KEY or not settings.GROQ_MODEL:
-        raise RuntimeError("LLM not configured (GROQ_API_KEY / GROQ_MODEL missing)")
 
     prompt = f"""Translate the following English text to {target_language}.
 Return ONLY the translated text with no extra explanation or formatting.
@@ -187,5 +235,11 @@ Return ONLY the translated text with no extra explanation or formatting.
 Text:
 {text}"""
 
-    raw = await _call_llm_sync(prompt)
+    raw = await _call_llm(
+        prompt,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        temperature=0.0,
+        max_tokens=450,
+    )
     return raw.strip()

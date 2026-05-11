@@ -834,6 +834,9 @@
         let refreshInterval = null;
         let isSuperAdmin = false;
         let allAdminsList = [];
+        let isLoadingConversations = false;
+        let lastAdminRegistrationAt = 0;
+        const ADMIN_REGISTRATION_TTL_MS = 5 * 60 * 1000;
         
         // Get config values
         function getAdminId() {
@@ -851,10 +854,12 @@
 
         // Register / refresh admin record in DB with the current display name
         async function registerAdminName() {
+            const adminKey = getAdminKey();
+            if (!adminKey) return;
             try {
-                await fetch(`${API_BASE}/admin/create`, {
+                const response = await fetch(`${API_BASE}/admin/create`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': getAdminKey() },
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
                     body: JSON.stringify({
                         adminId: getAdminId(),
                         adminName: getAdminName(),
@@ -862,7 +867,14 @@
                         maxQueueSize: 10
                     })
                 });
+                if (response.ok) {
+                    lastAdminRegistrationAt = Date.now();
+                }
             } catch (e) { /* silent — not critical */ }
+        }
+
+        function shouldRefreshAdminRegistration() {
+            return (Date.now() - lastAdminRegistrationAt) > ADMIN_REGISTRATION_TTL_MS;
         }
 
         async function checkSuperAdmin() {
@@ -883,9 +895,16 @@
         
         // Load all conversations
         async function loadConversations() {
-            // Always sync admin display name to DB before loading
-            await registerAdminName();
+            if (isLoadingConversations) {
+                return;
+            }
+            isLoadingConversations = true;
             try {
+                // Refresh admin identity periodically, not on every poll tick.
+                if (shouldRefreshAdminRegistration()) {
+                    await registerAdminName();
+                }
+
                 const response = await fetch(`${API_BASE}/admin/supervision/conversations`, {
                     headers: {
                         'X-Admin-Key': getAdminKey()
@@ -903,6 +922,8 @@
             } catch (error) {
                 console.error('Error loading conversations:', error);
                 showToast('Failed to load conversations', 'error');
+            } finally {
+                isLoadingConversations = false;
             }
         }
         
@@ -1411,6 +1432,19 @@
         // Initial load
         loadConversations();
         checkSuperAdmin();
+
+        // Re-register admin quickly when identity fields change.
+        document.getElementById('admin-id').addEventListener('change', async () => {
+            lastAdminRegistrationAt = 0;
+            await registerAdminName();
+            checkSuperAdmin();
+            loadConversations();
+        });
+        document.getElementById('admin-name').addEventListener('change', async () => {
+            lastAdminRegistrationAt = 0;
+            await registerAdminName();
+            loadConversations();
+        });
         
         // Auto-refresh every 5 seconds
         refreshInterval = setInterval(loadConversations, 5000);

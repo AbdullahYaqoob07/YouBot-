@@ -450,7 +450,9 @@
     <button class="refresh-btn" onclick="refreshDashboard()">↻</button>
 
     <script>
-        const API_BASE = 'http://localhost:5678';
+        const API_BASE = window.location.origin.startsWith('http')
+            ? window.location.origin
+            : 'http://localhost:8000';
         let currentAdminId = 'admin_' + Math.random().toString(36).substr(2, 9);
         let isAdminOnline = false;
         let currentFilter = 'all';

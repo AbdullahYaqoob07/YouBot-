@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phase 4 Supervision Validator</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(circle at top right, #12345a 0%, #0c1a2f 42%, #08101f 100%);
+            color: #e5edf7;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(8, 16, 31, 0.92);
+            border-bottom: 1px solid #21456f;
+            padding: 1rem 1.2rem;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            backdrop-filter: blur(5px);
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.22rem;
+            color: #7ad8ff;
+        }
+
+        .sub {
+            margin-top: 0.35rem;
+            color: #a7c0da;
+            font-size: 0.9rem;
+        }
+
+        .nav {
+            margin-top: 0.8rem;
+            display: flex;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            color: #7ad8ff;
+            text-decoration: none;
+            border: 1px solid #27517f;
+            background: #0e2743;
+            border-radius: 999px;
+            font-size: 0.83rem;
+            padding: 0.36rem 0.72rem;
+        }
+
+        .nav a:hover {
+            background: #183a61;
+        }
+
+        .container {
+            width: min(1260px, 94vw);
+            margin: 1.3rem auto 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+            gap: 1rem;
+        }
+
+        .card {
+            border: 1px solid #21456f;
+            background: linear-gradient(180deg, rgba(14, 34, 57, 0.95), rgba(9, 24, 41, 0.95));
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .card h2 {
+            margin: 0 0 0.7rem;
+            color: #8ee3ff;
+            font-size: 1rem;
+        }
+
+        .card p {
+            margin: 0 0 0.85rem;
+            color: #b8ccdf;
+            font-size: 0.9rem;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            margin-bottom: 0.7rem;
+        }
+
+        .field label {
+            font-size: 0.83rem;
+            color: #9ec0dc;
+        }
+
+        .field input,
+        .field textarea,
+        .field select {
+            border: 1px solid #2a547f;
+            border-radius: 8px;
+            background: #0d1f34;
+            color: #f1f7ff;
+            padding: 0.56rem 0.62rem;
+            font-size: 0.94rem;
+        }
+
+        .field textarea {
+            min-height: 96px;
+            resize: vertical;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.6rem;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.2rem;
+        }
+
+        button {
+            border: 0;
+            border-radius: 8px;
+            padding: 0.52rem 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: #2dc5ff;
+            color: #08304d;
+        }
+
+        button:hover {
+            filter: brightness(1.06);
+        }
+
+        button.secondary {
+            background: #2b4f74;
+            color: #dfefff;
+        }
+
+        button.warning {
+            background: #ffcc49;
+            color: #4b3502;
+        }
+
+        button.ghost {
+            background: #162d49;
+            color: #a8c7e5;
+            border: 1px solid #2b4f74;
+        }
+
+        .status {
+            display: none;
+            margin-top: 0.7rem;
+            padding: 0.62rem;
+            border-radius: 8px;
+            font-size: 0.86rem;
+            border: 1px solid transparent;
+        }
+
+        .status.loading {
+            display: block;
+            background: #123b66;
+            border-color: #2dc5ff;
+            color: #bde9ff;
+        }
+
+        .status.success {
+            display: block;
+            background: #0e5137;
+            border-color: #3ecf8e;
+            color: #dff8eb;
+        }
+
+        .status.error {
+            display: block;
+            background: #6a1f2b;
+            border-color: #ff8e9c;
+            color: #ffe7eb;
+        }
+
+        .result {
+            margin-top: 0.65rem;
+            min-height: 170px;
+            max-height: 360px;
+            overflow: auto;
+            border: 1px solid #2a547f;
+            border-radius: 10px;
+            background: #090f1c;
+            color: #d7e8f8;
+            padding: 0.75rem;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.83rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        .session-list {
+            margin-top: 0.5rem;
+            border: 1px solid #2a547f;
+            border-radius: 10px;
+            max-height: 220px;
+            overflow: auto;
+            background: #090f1c;
+        }
+
+        .session-item {
+            padding: 0.58rem 0.65rem;
+            border-bottom: 1px solid #1f3550;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .session-item:last-child {
+            border-bottom: none;
+        }
+
+        .meta {
+            color: #8fb4d9;
+            font-size: 0.78rem;
+            margin-top: 0.2rem;
+        }
+
+        .pill {
+            display: inline-block;
+            font-size: 0.72rem;
+            border: 1px solid #35638e;
+            border-radius: 999px;
+            padding: 0.13rem 0.43rem;
+            margin-right: 0.3rem;
+            color: #b9daf7;
+        }
+
+        .full {
+            grid-column: 1 / -1;
+        }
+
+        .hint {
+            margin-top: 0.45rem;
+            font-size: 0.78rem;
+            color: #9bb7d2;
+        }
+
+        @media (max-width: 750px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Phase 4 Supervision + Channel Validator</h1>
+        <div class="sub">Validate channel enforcement plus real-time admin supervision lifecycle end-to-end.</div>
+        <nav class="nav">
+            <a href="/">Chat Console</a>
+            <a href="/admin">Admin Dashboard</a>
+            <a href="/phase1/tenant-validation">Phase 1</a>
+            <a href="/phase2/llm-validation">Phase 2</a>
+            <a href="/phase3/retrieval-validation">Phase 3 Retrieval</a>
+            <a href="/phase3/ingestion-validation">Phase 3 Ingestion</a>
+            <a href="/phase5/analytics-validation">Phase 5 Analytics</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h2>1) Request Context</h2>
+            <p>Shared headers and IDs used by all calls in this validator.</p>
+            <div class="field">
+                <label for="apiBaseUrl">API Base URL</label>
+                <input id="apiBaseUrl" type="text" value="http://127.0.0.1:8000" />
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="tenantId">X-Tenant-Id</label>
+                    <input id="tenantId" type="text" value="tenant_sweden_001" />
+                </div>
+                <div class="field">
+                    <label for="workspaceId">X-Workspace-Id</label>
+                    <input id="workspaceId" type="text" value="workspace_001" />
+                </div>
+            </div>
+            <div class="field">
+                <label for="adminKey">X-Admin-Key (required for supervision endpoints)</label>
+                <input id="adminKey" type="password" value="your_admin_secret_key" />
+            </div>
+            <div class="field">
+                <label for="apiKey">X-API-Key (optional unless API key auth is enabled)</label>
+                <input id="apiKey" type="password" value="" placeholder="optional" />
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="userId">User ID</label>
+                    <input id="userId" type="text" value="phase4_user_001" />
+                </div>
+                <div class="field">
+                    <label for="sessionId">Session ID (auto from channel call)</label>
+                    <input id="sessionId" type="text" value="" placeholder="filled automatically when available" />
+                </div>
+            </div>
+            <div class="hint">Tip: Run the channel test first so Session ID can auto-populate supervision actions.</div>
+        </section>
+
+        <section class="card">
+            <h2>2) Channel Validation</h2>
+            <p>Validate allowed channels and process a chat turn via the webhook endpoint.</p>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="channel">Channel</label>
+                    <select id="channel">
+                        <option value="web" selected>web</option>
+                        <option value="webhook">webhook</option>
+                        <option value="whatsapp">whatsapp</option>
+                        <option value="facebook">facebook</option>
+                        <option value="instagram">instagram</option>
+                        <option value="email">email</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="invalidChannel">Invalid Channel Probe</label>
+                    <input id="invalidChannel" type="text" value="sms" />
+                </div>
+            </div>
+            <div class="field">
+                <label for="userMessage">Message</label>
+                <textarea id="userMessage">Hello, I need help with my permit renewal timeline.</textarea>
+            </div>
+            <div class="btn-row">
+                <button onclick="sendValidChannelMessage()">POST /webhook/ai-agent</button>
+                <button class="warning" onclick="sendInvalidChannelMessage()">POST invalid channel probe</button>
+            </div>
+            <div id="channelStatus" class="status"></div>
+            <pre id="channelResult" class="result">Ready.</pre>
+        </section>
+
+        <section class="card">
+            <h2>3) Supervision Conversation List</h2>
+            <p>Load active conversation feed and select a session for admin actions.</p>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="statusFilter">Status Filter</label>
+                    <select id="statusFilter">
+                        <option value="" selected>all (except ended)</option>
+                        <option value="active">active</option>
+                        <option value="admin_watching">admin_watching</option>
+                        <option value="admin_takeover">admin_takeover</option>
+                        <option value="pending_handoff">pending_handoff</option>
+                        <option value="ended">ended</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="includeEnded">Include Ended</label>
+                    <select id="includeEnded">
+                        <option value="false" selected>false</option>
+                        <option value="true">true</option>
+                    </select>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button onclick="loadSupervisionConversations()">GET /admin/supervision/conversations</button>
+                <button class="secondary" onclick="clearConversationList()">Clear list</button>
+            </div>
+            <div id="listStatus" class="status"></div>
+            <div id="sessionList" class="session-list"></div>
+            <pre id="listResult" class="result"></pre>
+        </section>
+
+        <section class="card">
+            <h2>4) Conversation Detail</h2>
+            <p>Inspect full message timeline for the selected session.</p>
+            <div class="field">
+                <label for="detailSessionId">Session ID</label>
+                <input id="detailSessionId" type="text" placeholder="session id from list" />
+            </div>
+            <div class="btn-row">
+                <button onclick="loadConversationDetail()">GET /admin/supervision/conversations/{session_id}</button>
+                <button class="secondary" onclick="copySessionIdFromGlobal()">Use global Session ID</button>
+            </div>
+            <div id="detailStatus" class="status"></div>
+            <pre id="detailResult" class="result"></pre>
+        </section>
+
+        <section class="card full">
+            <h2>5) Admin Intervention Actions</h2>
+            <p>Execute takeover, message operations (send/preview/enhance), and release.</p>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="adminId">admin_id</label>
+                    <input id="adminId" type="text" value="admin_phase4" />
+                </div>
+                <div class="field">
+                    <label for="actionSessionId">session_id</label>
+                    <input id="actionSessionId" type="text" placeholder="session id required" />
+                </div>
+            </div>
+            <div class="field">
+                <label for="takeoverReason">takeover reason</label>
+                <input id="takeoverReason" type="text" value="Manual intervention from phase 4 validator" />
+            </div>
+            <div class="field">
+                <label for="adminMessage">admin message</label>
+                <textarea id="adminMessage">I am taking over this chat to help you directly.</textarea>
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="enhanceAction">enhance action</label>
+                    <select id="enhanceAction">
+                        <option value="shorten">shorten</option>
+                        <option value="extend">extend</option>
+                        <option value="summarize">summarize</option>
+                        <option value="rephrase" selected>rephrase</option>
+                        <option value="formal">formal</option>
+                        <option value="friendly">friendly</option>
+                        <option value="bullets">bullets</option>
+                        <option value="grammar">grammar</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="endConversation">end_conversation on release</label>
+                    <select id="endConversation">
+                        <option value="false" selected>false (return to AI)</option>
+                        <option value="true">true (end chat)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="btn-row">
+                <button onclick="takeOverConversation()">POST takeover</button>
+                <button onclick="sendAdminMessage()">POST message</button>
+                <button class="secondary" onclick="previewAdminMessage()">POST preview</button>
+                <button class="secondary" onclick="enhanceAdminMessage()">POST enhance</button>
+                <button class="ghost" onclick="releaseConversation()">POST release</button>
+            </div>
+
+            <div id="actionStatus" class="status"></div>
+            <pre id="actionResult" class="result"></pre>
+        </section>
+    </main>
+
+    <script>
+        function getApiBaseUrl() {
+            const configured = document.getElementById("apiBaseUrl").value.trim();
+            const fallback = (window.location.origin && window.location.origin.startsWith("http"))
+                ? window.location.origin
+                : "http://127.0.0.1:8000";
+            return (configured || fallback).replace(/\/$/, "");
+        }
+
+        function tenantHeaders() {
+            const headers = {
+                "Content-Type": "application/json",
+                "X-Tenant-Id": document.getElementById("tenantId").value.trim(),
+                "X-Workspace-Id": document.getElementById("workspaceId").value.trim()
+            };
+            const apiKey = document.getElementById("apiKey").value.trim();
+            if (apiKey) {
+                headers["X-API-Key"] = apiKey;
+            }
+            return headers;
+        }
+
+        function adminHeaders() {
+            const headers = tenantHeaders();
+            headers["X-Admin-Key"] = document.getElementById("adminKey").value.trim();
+            return headers;
+        }
+
+        function syncSession(sessionId) {
+            if (!sessionId) return;
+            document.getElementById("sessionId").value = sessionId;
+            document.getElementById("detailSessionId").value = sessionId;
+            document.getElementById("actionSessionId").value = sessionId;
+        }
+
+        function copySessionIdFromGlobal() {
+            const sid = document.getElementById("sessionId").value.trim();
+            if (sid) {
+                syncSession(sid);
+            }
+        }
+
+        async function callJson(path, method, headers, payload) {
+            const url = `${getApiBaseUrl()}${path}`;
+            const options = {
+                method: method,
+                headers: headers
+            };
+
+            if (payload !== undefined) {
+                options.body = JSON.stringify(payload);
+            }
+
+            const response = await fetch(url, options);
+            const text = await response.text();
+
+            let parsed;
+            try {
+                parsed = JSON.parse(text);
+            } catch (_) {
+                parsed = { raw: text };
+            }
+
+            if (!response.ok) {
+                const detail = parsed && parsed.detail ? parsed.detail : parsed;
+                throw new Error(`HTTP ${response.status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
+            }
+
+            return parsed;
+        }
+
+        function setStatus(elementId, kind, message) {
+            const el = document.getElementById(elementId);
+            el.className = `status ${kind}`;
+            el.textContent = message;
+            el.style.display = "block";
+        }
+
+        function setResult(elementId, data) {
+            const el = document.getElementById(elementId);
+            if (typeof data === "string") {
+                el.textContent = data;
+                return;
+            }
+            el.textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function sendValidChannelMessage() {
+            const userId = document.getElementById("userId").value.trim();
+            const sessionId = document.getElementById("sessionId").value.trim();
+            const channel = document.getElementById("channel").value;
+            const message = document.getElementById("userMessage").value;
+
+            setStatus("channelStatus", "loading", "Sending message with valid channel...");
+
+            try {
+                const payload = {
+                    message: message,
+                    userId: userId,
+                    channel: channel
+                };
+
+                if (sessionId) {
+                    payload.sessionId = sessionId;
+                }
+
+                const data = await callJson("/webhook/ai-agent", "POST", tenantHeaders(), payload);
+                if (data && data.sessionId) {
+                    syncSession(data.sessionId);
+                }
+                setStatus("channelStatus", "success", "Message accepted by webhook endpoint.");
+                setResult("channelResult", data);
+            } catch (err) {
+                setStatus("channelStatus", "error", `Valid channel call failed: ${err.message || err}`);
+                setResult("channelResult", { error: String(err) });
+            }
+        }
+
+        async function sendInvalidChannelMessage() {
+            const userId = document.getElementById("userId").value.trim();
+            const sessionId = document.getElementById("sessionId").value.trim();
+            const badChannel = document.getElementById("invalidChannel").value.trim() || "sms";
+            const message = document.getElementById("userMessage").value;
+
+            setStatus("channelStatus", "loading", "Sending invalid channel probe (expected validation error)...");
+
+            try {
+                const payload = {
+                    message: message,
+                    userId: userId,
+                    channel: badChannel
+                };
+                if (sessionId) {
+                    payload.sessionId = sessionId;
+                }
+
+                const data = await callJson("/webhook/ai-agent", "POST", tenantHeaders(), payload);
+                setStatus("channelStatus", "error", "Invalid channel unexpectedly succeeded.");
+                setResult("channelResult", data);
+            } catch (err) {
+                setStatus("channelStatus", "success", `Invalid channel rejected as expected: ${err.message || err}`);
+                setResult("channelResult", { expectedFailure: true, detail: String(err) });
+            }
+        }
+
+        function renderConversationList(payload) {
+            const listContainer = document.getElementById("sessionList");
+            listContainer.innerHTML = "";
+
+            const items = (payload && payload.conversations) ? payload.conversations : [];
+            if (!items.length) {
+                listContainer.innerHTML = '<div class="session-item"><div>No conversations returned.</div></div>';
+                return;
+            }
+
+            items.forEach((row) => {
+                const sid = row.session_id || "";
+                const status = row.status || "unknown";
+                const channel = row.channel || "n/a";
+                const userId = row.user_id || "n/a";
+                const takeover = row.admin_takeover ? "takeover" : "ai";
+
+                const wrapper = document.createElement("div");
+                wrapper.className = "session-item";
+
+                const left = document.createElement("div");
+                left.innerHTML = `
+                    <div><strong>${sid || "(missing session id)"}</strong></div>
+                    <div class="meta">
+                        <span class="pill">status: ${status}</span>
+                        <span class="pill">channel: ${channel}</span>
+                        <span class="pill">owner: ${takeover}</span>
+                        user: ${userId}
+                    </div>
+                `;
+
+                const right = document.createElement("button");
+                right.className = "secondary";
+                right.textContent = "Use";
+                right.onclick = () => syncSession(sid);
+
+                wrapper.appendChild(left);
+                wrapper.appendChild(right);
+                listContainer.appendChild(wrapper);
+            });
+        }
+
+        function clearConversationList() {
+            document.getElementById("sessionList").innerHTML = "";
+            setResult("listResult", "");
+            document.getElementById("listStatus").style.display = "none";
+        }
+
+        async function loadSupervisionConversations() {
+            const statusFilter = document.getElementById("statusFilter").value;
+            const includeEnded = document.getElementById("includeEnded").value;
+            const query = new URLSearchParams();
+
+            if (statusFilter) {
+                query.set("status", statusFilter);
+            }
+            query.set("include_ended", includeEnded);
+
+            setStatus("listStatus", "loading", "Loading supervision conversation feed...");
+
+            try {
+                const data = await callJson(`/admin/supervision/conversations?${query.toString()}`, "GET", adminHeaders());
+                renderConversationList(data);
+                setStatus("listStatus", "success", `Loaded ${data.total || 0} conversation(s).`);
+                setResult("listResult", data);
+            } catch (err) {
+                setStatus("listStatus", "error", `List call failed: ${err.message || err}`);
+                setResult("listResult", { error: String(err) });
+            }
+        }
+
+        async function loadConversationDetail() {
+            const sid = document.getElementById("detailSessionId").value.trim();
+            if (!sid) {
+                setStatus("detailStatus", "error", "Session ID is required.");
+                return;
+            }
+
+            setStatus("detailStatus", "loading", "Loading conversation detail...");
+
+            try {
+                const data = await callJson(`/admin/supervision/conversations/${encodeURIComponent(sid)}`, "GET", adminHeaders());
+                setStatus("detailStatus", "success", "Conversation detail loaded.");
+                setResult("detailResult", data);
+            } catch (err) {
+                setStatus("detailStatus", "error", `Detail call failed: ${err.message || err}`);
+                setResult("detailResult", { error: String(err) });
+            }
+        }
+
+        function actionPayloadBase() {
+            return {
+                admin_id: document.getElementById("adminId").value.trim()
+            };
+        }
+
+        function selectedActionSession() {
+            const sid = document.getElementById("actionSessionId").value.trim();
+            if (!sid) {
+                throw new Error("Action session_id is required.");
+            }
+            return sid;
+        }
+
+        async function takeOverConversation() {
+            setStatus("actionStatus", "loading", "Taking over conversation...");
+            try {
+                const sid = selectedActionSession();
+                const payload = actionPayloadBase();
+                payload.reason = document.getElementById("takeoverReason").value.trim() || "Manual intervention";
+
+                const data = await callJson(
+                    `/admin/supervision/conversations/${encodeURIComponent(sid)}/takeover`,
+                    "POST",
+                    adminHeaders(),
+                    payload
+                );
+                setStatus("actionStatus", "success", "Takeover accepted.");
+                setResult("actionResult", data);
+            } catch (err) {
+                setStatus("actionStatus", "error", `Takeover failed: ${err.message || err}`);
+                setResult("actionResult", { error: String(err) });
+            }
+        }
+
+        async function sendAdminMessage() {
+            setStatus("actionStatus", "loading", "Sending admin message...");
+            try {
+                const sid = selectedActionSession();
+                const payload = actionPayloadBase();
+                payload.message = document.getElementById("adminMessage").value;
+
+                const data = await callJson(
+                    `/admin/supervision/conversations/${encodeURIComponent(sid)}/message`,
+                    "POST",
+                    adminHeaders(),
+                    payload
+                );
+                setStatus("actionStatus", "success", "Admin message sent.");
+                setResult("actionResult", data);
+            } catch (err) {
+                setStatus("actionStatus", "error", `Send message failed: ${err.message || err}`);
+                setResult("actionResult", { error: String(err) });
+            }
+        }
+
+        async function previewAdminMessage() {
+            setStatus("actionStatus", "loading", "Previewing admin message...");
+            try {
+                const sid = selectedActionSession();
+                const payload = actionPayloadBase();
+                payload.message = document.getElementById("adminMessage").value;
+
+                const data = await callJson(
+                    `/admin/supervision/conversations/${encodeURIComponent(sid)}/message/preview`,
+                    "POST",
+                    adminHeaders(),
+                    payload
+                );
+                setStatus("actionStatus", "success", "Preview generated.");
+                setResult("actionResult", data);
+            } catch (err) {
+                setStatus("actionStatus", "error", `Preview failed: ${err.message || err}`);
+                setResult("actionResult", { error: String(err) });
+            }
+        }
+
+        async function enhanceAdminMessage() {
+            setStatus("actionStatus", "loading", "Enhancing admin message...");
+            try {
+                const sid = selectedActionSession();
+                const payload = actionPayloadBase();
+                payload.message = document.getElementById("adminMessage").value;
+                payload.action = document.getElementById("enhanceAction").value;
+
+                const data = await callJson(
+                    `/admin/supervision/conversations/${encodeURIComponent(sid)}/message/enhance`,
+                    "POST",
+                    adminHeaders(),
+                    payload
+                );
+                setStatus("actionStatus", "success", "Enhancement complete.");
+                setResult("actionResult", data);
+            } catch (err) {
+                setStatus("actionStatus", "error", `Enhance failed: ${err.message || err}`);
+                setResult("actionResult", { error: String(err) });
+            }
+        }
+
+        async function releaseConversation() {
+            setStatus("actionStatus", "loading", "Releasing conversation...");
+            try {
+                const sid = selectedActionSession();
+                const payload = actionPayloadBase();
+                payload.end_conversation = document.getElementById("endConversation").value === "true";
+
+                const data = await callJson(
+                    `/admin/supervision/conversations/${encodeURIComponent(sid)}/release`,
+                    "POST",
+                    adminHeaders(),
+                    payload
+                );
+                setStatus("actionStatus", "success", "Release request accepted.");
+                setResult("actionResult", data);
+            } catch (err) {
+                setStatus("actionStatus", "error", `Release failed: ${err.message || err}`);
+                setResult("actionResult", { error: String(err) });
+            }
+        }
+    </script>
+</body>
+</html>

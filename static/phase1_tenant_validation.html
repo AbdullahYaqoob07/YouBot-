@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phase 1 Tenant Validation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: #16213e;
+            border-bottom: 2px solid #0f3460;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.3rem;
+        }
+
+        .nav {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            background: #0f3460;
+            color: #00d9ff;
+            text-decoration: none;
+            padding: 0.45rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.88rem;
+        }
+
+        .nav a:hover {
+            background: #1a4a7a;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .card {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 10px;
+            padding: 1rem;
+        }
+
+        .card h2 {
+            color: #00d9ff;
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .field label {
+            color: #a4b5c6;
+            font-size: 0.85rem;
+        }
+
+        .field input,
+        .field textarea,
+        .field select {
+            width: 100%;
+            border: 1px solid #2f4d69;
+            border-radius: 6px;
+            padding: 0.6rem;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 0.95rem;
+        }
+
+        .field textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.6rem;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.2rem;
+        }
+
+        button {
+            border: 0;
+            border-radius: 6px;
+            padding: 0.55rem 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: #00d9ff;
+            color: #10263d;
+        }
+
+        button.secondary {
+            background: #2f4d69;
+            color: #dbe7f3;
+        }
+
+        button:hover {
+            filter: brightness(1.08);
+        }
+
+        .status {
+            font-size: 0.85rem;
+            color: #8fb3d1;
+            margin: 0.5rem 0 0.75rem;
+        }
+
+        .toggle-line {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.2rem 0 0.6rem;
+            color: #b6cbe0;
+            font-size: 0.9rem;
+        }
+
+        .result {
+            background: #101827;
+            border: 1px solid #2f4d69;
+            border-radius: 8px;
+            padding: 0.8rem;
+            min-height: 240px;
+            overflow: auto;
+            font-family: Consolas, monospace;
+            font-size: 0.84rem;
+            white-space: pre-wrap;
+            line-height: 1.35;
+        }
+
+        @media (max-width: 700px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Phase 1 Tenant and Workspace Validation</h1>
+        <nav class="nav">
+            <a href="/">Chat Console</a>
+            <a href="/phase2/llm-validation">Phase 2 Validator</a>
+            <a href="/phase3/retrieval-validation">Phase 3 Retrieval</a>
+            <a href="/phase3/ingestion-validation">Phase 3 Ingestion</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h2>Request Context</h2>
+            <div class="field">
+                <label for="apiKey">X-API-Key (for webhook/history, optional if API_KEYS empty)</label>
+                <input id="apiKey" type="text" placeholder="public API key" />
+            </div>
+            <div class="field">
+                <label for="adminKey">X-Admin-Key (for admin queue)</label>
+                <input id="adminKey" type="text" placeholder="admin API key" />
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="tenantId">X-Tenant-Id</label>
+                    <input id="tenantId" type="text" value="public" />
+                </div>
+                <div class="field">
+                    <label for="workspaceId">X-Workspace-Id</label>
+                    <input id="workspaceId" type="text" value="default" />
+                </div>
+            </div>
+            <div class="toggle-line">
+                <input id="includeBodyIds" type="checkbox" checked />
+                <label for="includeBodyIds">Also send tenantId/workspaceId in webhook body</label>
+            </div>
+            <p class="status" id="statusText">Ready.</p>
+        </section>
+
+        <section class="card">
+            <h2>Tenant-Scoped Webhook Test</h2>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="userId">userId</label>
+                    <input id="userId" type="text" value="phase1_user_001" />
+                </div>
+                <div class="field">
+                    <label for="channel">channel</label>
+                    <select id="channel">
+                        <option value="webhook" selected>webhook</option>
+                        <option value="web">web</option>
+                        <option value="whatsapp">whatsapp</option>
+                        <option value="facebook">facebook</option>
+                        <option value="instagram">instagram</option>
+                        <option value="email">email</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label for="sessionId">sessionId (optional)</label>
+                <input id="sessionId" type="text" placeholder="leave empty to auto-generate" />
+            </div>
+            <div class="field">
+                <label for="message">message</label>
+                <textarea id="message">Hi, I want to relocate to Sweden with my family. Can you explain initial steps?</textarea>
+            </div>
+            <div class="btn-row">
+                <button onclick="sendWebhook()">POST /webhook/ai-agent</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Tenant-Scoped Follow-up Checks</h2>
+            <div class="field">
+                <label for="historySession">session_id (for history)</label>
+                <input id="historySession" type="text" placeholder="auto-filled from webhook response" />
+            </div>
+            <div class="btn-row">
+                <button class="secondary" onclick="getHistory()">GET /chat/{session_id}/history</button>
+            </div>
+            <div class="field" style="margin-top: 0.8rem;">
+                <label for="queueStatus">admin queue status filter (optional)</label>
+                <input id="queueStatus" type="text" placeholder="pending, assigned, resolved" />
+            </div>
+            <div class="btn-row">
+                <button class="secondary" onclick="getQueue()">GET /admin/queue</button>
+            </div>
+        </section>
+
+        <section class="card" style="grid-column: 1 / -1;">
+            <h2>Response Output</h2>
+            <div class="result" id="output">{}</div>
+        </section>
+    </main>
+
+    <script>
+        function tenantHeaders() {
+            return {
+                "X-Tenant-Id": document.getElementById("tenantId").value.trim() || "public",
+                "X-Workspace-Id": document.getElementById("workspaceId").value.trim() || "default"
+            };
+        }
+
+        function apiHeaders(includeJson) {
+            const headers = tenantHeaders();
+            const apiKey = document.getElementById("apiKey").value.trim();
+            if (apiKey) {
+                headers["X-API-Key"] = apiKey;
+            }
+            if (includeJson) {
+                headers["Content-Type"] = "application/json";
+            }
+            return headers;
+        }
+
+        function adminHeaders(includeJson) {
+            const headers = tenantHeaders();
+            const adminKey = document.getElementById("adminKey").value.trim();
+            if (adminKey) {
+                headers["X-Admin-Key"] = adminKey;
+            }
+            if (includeJson) {
+                headers["Content-Type"] = "application/json";
+            }
+            return headers;
+        }
+
+        function setStatus(message, isError) {
+            const el = document.getElementById("statusText");
+            el.textContent = message;
+            el.style.color = isError ? "#ff8f8f" : "#8fb3d1";
+        }
+
+        function printOutput(data) {
+            document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function callApi(method, url, headers, body) {
+            const init = { method, headers: headers || {} };
+            if (body) {
+                init.body = JSON.stringify(body);
+            }
+
+            const response = await fetch(url, init);
+            const contentType = response.headers.get("content-type") || "";
+            let payload;
+
+            if (contentType.includes("application/json")) {
+                payload = await response.json();
+            } else {
+                payload = { raw: await response.text() };
+            }
+
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}: ${JSON.stringify(payload)}`);
+            }
+
+            return payload;
+        }
+
+        function webhookPayload() {
+            const payload = {
+                message: document.getElementById("message").value.trim(),
+                userId: document.getElementById("userId").value.trim(),
+                channel: document.getElementById("channel").value
+            };
+
+            const sessionId = document.getElementById("sessionId").value.trim();
+            if (sessionId) {
+                payload.sessionId = sessionId;
+            }
+
+            if (document.getElementById("includeBodyIds").checked) {
+                payload.tenantId = document.getElementById("tenantId").value.trim() || "public";
+                payload.workspaceId = document.getElementById("workspaceId").value.trim() || "default";
+            }
+
+            return payload;
+        }
+
+        async function sendWebhook() {
+            setStatus("Calling webhook endpoint...", false);
+            try {
+                const result = await callApi("POST", "/webhook/ai-agent", apiHeaders(true), webhookPayload());
+                printOutput(result);
+                const sid = result.sessionId || "";
+                if (sid) {
+                    document.getElementById("sessionId").value = sid;
+                    document.getElementById("historySession").value = sid;
+                }
+                setStatus("Webhook succeeded. Session captured for follow-up checks.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Webhook failed.", true);
+            }
+        }
+
+        async function getHistory() {
+            setStatus("Loading tenant-scoped conversation history...", false);
+            try {
+                const sid = document.getElementById("historySession").value.trim();
+                if (!sid) {
+                    throw new Error("session_id is required");
+                }
+                const result = await callApi("GET", `/chat/${encodeURIComponent(sid)}/history`, apiHeaders(false));
+                printOutput(result);
+                setStatus("History loaded.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("History check failed.", true);
+            }
+        }
+
+        async function getQueue() {
+            setStatus("Loading tenant-scoped admin queue...", false);
+            try {
+                const status = document.getElementById("queueStatus").value.trim();
+                const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
+                const result = await callApi("GET", `/admin/queue${suffix}`, adminHeaders(false));
+                printOutput(result);
+                setStatus("Admin queue loaded.", false);
+            } catch (error) {
+                printOutput({ error: String(error) });
+                setStatus("Admin queue check failed.", true);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -275,6 +275,38 @@ CREATE TABLE IF NOT EXISTS kb_update_history (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================
+-- AGENT ORCHESTRATION & MCP TABLES
+-- ============================================
+
+-- 12. Create tenant_mcp_servers table
+CREATE TABLE IF NOT EXISTS tenant_mcp_servers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id VARCHAR(80) NOT NULL,
+  workspace_id VARCHAR(80) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  connection_type VARCHAR(20) NOT NULL DEFAULT 'sse',
+  connection_url TEXT NOT NULL,
+  config_json_encrypted TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME,
+  INDEX idx_mcp_tenant (tenant_id),
+  INDEX idx_mcp_workspace (workspace_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 13. Create langgraph_checkpoints table
+CREATE TABLE IF NOT EXISTS langgraph_checkpoints (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  thread_id VARCHAR(255) NOT NULL,
+  checkpoint_id VARCHAR(255) NOT NULL,
+  parent_checkpoint_id VARCHAR(255),
+  checkpoint_blob LONGBLOB NOT NULL,
+  metadata_blob LONGBLOB NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_langgraph_thread (thread_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================
 -- MIGRATION: ADD MISSING COLUMNS TO EXISTING TABLES
 -- ============================================
 

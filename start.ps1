@@ -27,9 +27,9 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 Write-Host "  LANGGRAPH AI AGENT SERVER" -ForegroundColor Magenta
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
 Write-Host ""
-Write-Host "  🌐 Server:    http://localhost:5678" -ForegroundColor Green
-Write-Host "  🧪 Frontend:  http://localhost:5678/static/index.html" -ForegroundColor Green
-Write-Host "  📚 API Docs:  http://localhost:5678/docs" -ForegroundColor Green
+Write-Host "  🌐 Server:    http://localhost:8000" -ForegroundColor Green
+Write-Host "  🧪 Frontend:  http://localhost:8000/static/index.html" -ForegroundColor Green
+Write-Host "  📚 API Docs:  http://localhost:8000/docs" -ForegroundColor Green
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
 Write-Host ""
@@ -37,4 +37,4 @@ Write-Host "✓ Starting server..." -ForegroundColor Cyan
 Write-Host ""
 
 # Start the server
-uvicorn app:app --reload --port 5678 --host 0.0.0.0
+uvicorn app:app --reload --port 8000 --host 0.0.0.0
