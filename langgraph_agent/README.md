@@ -14,12 +14,12 @@ components/                ← React UI components
 
 ## Backend (LangGraph Agent)
 
-Advanced AI agent built with **LangGraph** + **FastAPI**:
+Advanced AI agent built with **LangGraph** + **FastAPI**, **llamaIndex**:
 
-- Multi-tenant RAG pipeline (Pinecone / Qdrant / Chroma)
+- Multi-tenant RAG pipeline
 - Semantic FAQ cache with multilingual support
 - Human-in-the-loop admin handoff
-- Supabase / MySQL conversation persistence
+- Supabase  conversation persistence
 - Real-time analytics and supervision
 
 ### Quick Start
@@ -41,7 +41,7 @@ Admin console integrated with the FastAPI backend via a backend proxy route (`/b
 
 ```bash
 npm install
-npm run dev   # http://localhost:3000
+npm run dev   
 ```
 
 ### Console Routes
