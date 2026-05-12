@@ -1,4 +1,4 @@
-# YouBot — Sweden Relocators AI Platform
+# YouBot
 
 Full-stack AI assistant platform with a LangGraph/FastAPI backend and a Next.js admin console.
 
@@ -54,11 +54,4 @@ npm run dev   # http://localhost:3000
 - `/channels`
 - `/settings`
 
-### Environment
 
-Copy `.env.example` to `.env.local` and set:
-
-- `YOUBOT_API_BASE_URL`
-- `YOUBOT_ADMIN_API_KEY`
-- `YOUBOT_TENANT_ID`
-- `YOUBOT_WORKSPACE_ID`
